@@ -185,11 +185,18 @@ onMounted(() => {
           >
             <NAvatar :src="item.iconSrc" style="background-color: transparent;" :size="20" />
           </div>
-        <!-- <div class="w-[40px] h-[40px] ml-[10px] flex justify-center items-center cursor-pointer" @click="handleEngineClick">
-          <NAvatar style="background-color: transparent;" :size="30">
-            <SvgIcon icon="lets-icons:setting-alt-fill" style="font-size: 20px;" />
-          </NAvatar>
-        </div> -->
+          <!-- AI 智能搜索开关（与引擎图标同款） -->
+          <div
+            :title="t('panelHome.aiSearch')"
+            class="w-[40px] h-[40px] mr-[10px] cursor-pointer flex items-center justify-center rounded-xl transition-colors"
+            :class="isAiMode ? 'bg-sky-400' : 'bg-[#ffffff] hover:bg-sky-100'"
+            @click="toggleAiMode"
+          >
+            <SvgIcon
+              icon="material-symbols:auto-awesome" style="font-size: 20px;"
+              :class="isAiMode ? 'text-white' : 'text-amber-500'"
+            />
+          </div>
         </div>
       </div>
 

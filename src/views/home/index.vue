@@ -8,6 +8,7 @@ import { SvgIcon } from '@/components/common'
 import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
 import { getList as getGroupList } from '@/api/panel/itemIconGroup'
 import { type AISearchResult, aiSearch } from '@/api/panel/aiSearch'
+import { type AIAddWebsiteResult, addWebsite, githubSearch } from '@/api/panel/aiManage'
 import { getDefaultAddress } from '@/utils/address'
 
 import { setTitle, updateLocalUserInfo } from '@/utils/cmn'
@@ -48,6 +49,32 @@ const currentAddItenIconGroupId = ref<number | undefined>()
 const settingModalShow = ref(false)
 const aiAssistantShow = ref(false)
 const adminPanelShow = ref(false)
+// AppStarter 打开时的初始页面（UserInfo=设置首页，ItemGroupManage=分组管理直达）
+const appStarterDefault = ref('UserInfo')
+
+function openSettings() {
+  appStarterDefault.value = 'UserInfo'
+  settingModalShow.value = true
+}
+
+function openGroupManage() {
+  appStarterDefault.value = 'ItemGroupManage'
+  settingModalShow.value = true
+}
+
+// 退出登录：清空登录态并回登录页
+function handleLogout() {
+  dialog.warning({
+    title: '退出登录',
+    content: '确定要退出登录吗？',
+    positiveText: t('common.confirm'),
+    negativeText: t('common.cancel'),
+    onPositiveClick: () => {
+      authStore.removeToken()
+      router.push('/login')
+    },
+  })
+}
 
 const items = ref<ItemGroup[]>([])
 const filterItems = ref<ItemGroup[]>([])
@@ -62,6 +89,8 @@ const aiSearchMeta = ref<{ provider: string; model: string; latencyMs: number; f
   { provider: '', model: '', latencyMs: 0, fallback: false },
 )
 const aiSearchCache = new Map<string, Panel.ItemInfo[]>()
+// AI 操作指令（添加网址 / GitHub 检索）的结果，展示在搜索框下方弹性面板
+const aiActionResult = ref<AIAddWebsiteResult | null>(null)
 
 function openPage(openMethod: number, url: string, title?: string) {
   switch (openMethod) {
@@ -339,7 +368,7 @@ function itemFrontEndSearch(keyword?: string) {
   }
 }
 
-// AI 智能搜索：回车/点击 AI 时触发，自动降级普通搜索
+// AI 智能搜索：回车/点击 AI 时触发，自动降级普通搜索；支持「添加xx」「GitHub xx」操作指令
 async function onAiSearch(keyword?: string) {
   const kw = (keyword ?? '').trim()
   searchKeyword.value = kw
@@ -348,6 +377,33 @@ async function onAiSearch(keyword?: string) {
     return
   }
   searchMode.value = 'ai'
+  aiActionResult.value = null
+
+  // 操作类指令：添加网址 / GitHub 检索（走 AI 助手同款接口，结果在下方弹性面板展示）
+  const isGithubAction = /github/i.test(kw)
+  const isAddAction = /添加|收录|加入/.test(kw)
+  if (isGithubAction || isAddAction) {
+    aiSearchLoading.value = true
+    aiSearchError.value = null
+    aiSearchResults.value = []
+    try {
+      const call = isGithubAction ? githubSearch : addWebsite
+      const { code, data, msg } = await call<AIAddWebsiteResult>(kw)
+      if (code === 0 && data) {
+        aiActionResult.value = data
+        ms.success(`已添加到「${data.category}」分组`)
+        getList()
+      }
+      else {
+        aiSearchError.value = msg || '操作失败，请稍后重试'
+      }
+    }
+    catch (e: any) {
+      aiSearchError.value = e?.message || '操作失败，请稍后重试'
+    }
+    aiSearchLoading.value = false
+    return
+  }
 
   // 命中缓存
   const cacheKey = kw
@@ -391,6 +447,7 @@ function clearSearch() {
   searchMode.value = 'normal'
   aiSearchResults.value = []
   aiSearchError.value = null
+  aiActionResult.value = null
   filterItems.value = items.value
 }
 
@@ -464,9 +521,12 @@ function handleAddItem(itemIconGroupId?: number) {
             <SearchBox v-model:search-mode="searchMode" @item-search="itemFrontEndSearch" @ai-search="onAiSearch" />
           </div>
 
-          <!-- AI 智能搜索结果 -->
-          <div v-if="searchMode === 'ai' && searchKeyword" class="mt-[14px] mx-auto sm:w-full lg:w-[80%]">
-            <div class="ai-search-panel rounded-2xl p-3" :style="{ background: 'rgba(15,23,42,0.55)', color: '#fff' }">
+          <!-- AI 智能搜索结果 / AI 操作结果（与搜索引擎选择框同款毛玻璃弹层，高度随内容弹性伸缩） -->
+          <div v-if="searchMode === 'ai' && searchKeyword" class="mt-[10px] mx-auto sm:w-full lg:w-[80%]">
+            <div
+              class="ai-search-panel rounded-xl p-[10px]"
+              :style="{ background: '#2a2a2a6b', color: '#fff', backdropFilter: 'blur(5px)', border: '1px solid #ccc' }"
+            >
               <div class="flex items-center justify-between mb-2">
                 <div class="text-sm flex items-center gap-2">
                   <SvgIcon icon="material-symbols:auto-awesome" class="text-sky-300" />
@@ -481,9 +541,34 @@ function handleAddItem(itemIconGroupId?: number) {
                 </NButton>
               </div>
 
-              <NSpin v-if="aiSearchLoading" size="small" />
+              <div v-if="aiSearchLoading" class="flex items-center gap-2 text-sm opacity-80">
+                <NSpin size="small" />
+                <span>AI 正在思考，免费算力高峰期可能需要 1~2 分钟，请稍候…</span>
+              </div>
               <div v-else-if="aiSearchError" class="text-sm text-orange-300">
                 {{ aiSearchError }}
+              </div>
+              <!-- AI 操作指令（添加网址 / GitHub 检索）结果卡片 -->
+              <div v-else-if="aiActionResult" class="rounded-xl border border-slate-400/40 p-3 flex flex-col gap-2">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-lg bg-sky-100 flex items-center justify-center text-sky-600 font-bold">
+                    {{ aiActionResult.item.title?.slice(0, 1) }}
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium truncate">
+                      {{ aiActionResult.item.title }}
+                    </div>
+                    <div class="text-xs opacity-70 truncate">
+                      {{ aiActionResult.item.url }}
+                    </div>
+                  </div>
+                  <NTag size="small" type="info" round>
+                    {{ aiActionResult.category }}
+                  </NTag>
+                </div>
+                <div class="text-xs opacity-70">
+                  已添加到「{{ aiActionResult.category }}」分组，首页已同步更新。
+                </div>
               </div>
               <div v-else-if="aiSearchResults.length === 0" class="text-sm opacity-70">
                 {{ t('panelHome.aiSearchEmpty') }}
@@ -670,9 +755,15 @@ function handleAddItem(itemIconGroupId?: number) {
           </template>
         </NButton>
 
-        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" @click="settingModalShow = !settingModalShow">
+        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" title="设置" @click="openSettings">
           <template #icon>
             <SvgIcon class="text-white font-xl" icon="majesticons-applications" />
+          </template>
+        </NButton>
+
+        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" title="分组管理" @click="openGroupManage">
+          <template #icon>
+            <SvgIcon class="text-white font-xl" icon="material-symbols:ad-group-outline-rounded" />
           </template>
         </NButton>
 
@@ -688,6 +779,12 @@ function handleAddItem(itemIconGroupId?: number) {
           </template>
         </NButton>
 
+        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" title="退出登录" @click="handleLogout">
+          <template #icon>
+            <SvgIcon class="text-white font-xl" icon="material-symbols:logout" />
+          </template>
+        </NButton>
+
         <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_PUBLIC" color="#2a2a2a6b" :title="$t('panelHome.goToLogin')" @click="router.push('/login')">
           <template #icon>
             <SvgIcon class="text-white font-xl" icon="material-symbols:account-circle" />
@@ -695,7 +792,7 @@ function handleAddItem(itemIconGroupId?: number) {
         </NButton>
       </NButtonGroup>
 
-      <AppStarter v-model:visible="settingModalShow" />
+      <AppStarter v-model:visible="settingModalShow" :default-app="appStarterDefault" />
       <!-- <Setting v-model:visible="settingModalShow" /> -->
     </div>
 

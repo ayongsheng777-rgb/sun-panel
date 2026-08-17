@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NLayout, NLayoutContent, NLayoutSider, NSpace } from 'naive-ui'
 import { useAuthStore } from '@/store'
 import { AppLoader, RoundCardModal, SvgIcon } from '@/components/common'
@@ -13,6 +13,7 @@ interface App {
 }
 const props = defineProps<{
   visible: boolean
+  defaultApp?: string
 }>()
 
 const emit = defineEmits<{
@@ -67,6 +68,12 @@ const show = computed({
   set: (visible: boolean) => {
     emit('update:visible', visible)
   },
+})
+
+// 打开时若指定了 defaultApp（如「分组管理」直达），直接切到对应页面
+watch(() => props.visible, (v) => {
+  if (v && props.defaultApp)
+    componentName.value = props.defaultApp
 })
 
 function handleClickApp(item: App) {

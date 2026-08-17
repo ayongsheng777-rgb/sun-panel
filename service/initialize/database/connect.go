@@ -115,7 +115,7 @@ func CreateDatabase(driver string, db *gorm.DB) error {
 	}
 
 	// 创建数据表
-	err := db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&models.User{},
 		&models.SystemSetting{},
 		&models.ItemIcon{},
@@ -123,9 +123,14 @@ func CreateDatabase(driver string, db *gorm.DB) error {
 		&models.File{},
 		&models.ItemIconGroup{},
 		&models.ModuleConfig{},
-	)
+	); err != nil {
+		return err
+	}
 
-	return err
+	// 旧数据迁移：url/lanUrl -> addresses（幂等）
+	models.MigrateLegacyAddresses(db)
+
+	return nil
 }
 
 // 初始化一个用户,一个用户都没有的时候创建一个

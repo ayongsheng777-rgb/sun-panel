@@ -4,6 +4,22 @@ declare namespace Panel {
 
     }
 
+    // 地址类型
+    type ItemAddressType = 'https' | 'http' | 'lan' | 'other'
+
+    // 弹性多地址：一个图标 = 1 个默认地址 + N 个可选地址
+    interface ItemAddress {
+        id: string
+        name: string
+        url: string
+        type: ItemAddressType
+        isDefault: boolean
+        sort: number
+        enabled: boolean
+        openMethod?: number
+        color?: string
+    }
+
     interface ItemInfo extends Common.InfoBase {
         icon: ItemIcon |null
         title: string
@@ -13,6 +29,8 @@ declare namespace Panel {
         description?: string
         openMethod: number
         itemIconGroupId ?:number
+        // 新版弹性地址集合（优先使用）
+        addresses?: Panel.ItemAddress[]
     }
 
     interface ItemIconGroup extends Common.InfoBase {
@@ -70,6 +88,54 @@ declare namespace Panel {
     interface ItemIconSortRequest{
         sortItems:Common.SortItemRequest[]
         itemIconGroupId:number
+    }
+
+    // ===== AI 智能搜索 =====
+    type AISearchMode = 'normal' | 'ai'
+
+    interface AISearchResponse {
+        mode: string
+        query: string
+        results: Panel.ItemInfo[]
+        count: number
+        provider?: string
+        model?: string
+        fallback?: boolean
+        reason?: string
+    }
+
+    interface AIModel {
+        id: string
+        name?: string
+        provider: string
+        contextLength?: number
+        available?: boolean
+    }
+
+    interface AIProviderConfig {
+        provider: 'deepseek' | 'nvidia' | 'custom'
+        baseUrl: string
+        apiKey: string
+        model: string
+        enabled: boolean
+        timeout: number
+    }
+
+    interface AIConfig {
+        enabled: boolean
+        defaultProvider: 'deepseek' | 'nvidia' | 'custom'
+        strategy: string
+        providers: Record<string, AIProviderConfig>
+    }
+
+    interface AIModelTestResult {
+        model: string
+        success: boolean
+        latencyMs: number
+        firstTokenMs?: number
+        totalMs?: number
+        error?: string
+        testedAt: string
     }
 }
 

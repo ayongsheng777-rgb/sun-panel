@@ -46,10 +46,13 @@ func (a *ItemIcon) Edit(c *gin.Context) {
 	if j, err := json.Marshal(req.Icon); err == nil {
 		req.IconJson = string(j)
 	}
+	if j, err := json.Marshal(req.Addresses); err == nil {
+		req.AddressesJson = string(j)
+	}
 
 	if req.ID != 0 {
 		// 修改
-		updateField := []string{"IconJson", "Icon", "Title", "Url", "LanUrl", "Description", "OpenMethod", "GroupId", "UserId", "ItemIconGroupId"}
+		updateField := []string{"IconJson", "Icon", "Title", "Url", "LanUrl", "Description", "OpenMethod", "GroupId", "UserId", "ItemIconGroupId", "AddressesJson"}
 		if req.Sort != 0 {
 			updateField = append(updateField, "Sort")
 		}
@@ -85,6 +88,9 @@ func (a *ItemIcon) AddMultiple(c *gin.Context) {
 		// json转字符串
 		if j, err := json.Marshal(req[i].Icon); err == nil {
 			req[i].IconJson = string(j)
+		}
+		if j, err := json.Marshal(req[i].Addresses); err == nil {
+			req[i].AddressesJson = string(j)
 		}
 	}
 
@@ -141,6 +147,10 @@ func (a *ItemIcon) GetListByGroupId(c *gin.Context) {
 
 	for k, v := range itemIcons {
 		json.Unmarshal([]byte(v.IconJson), &itemIcons[k].Icon)
+		// 弹性地址反序列化（旧数据若为空，由启动时 MigrateLegacyAddresses 已回填）
+		if v.AddressesJson != "" && v.AddressesJson != "null" {
+			json.Unmarshal([]byte(v.AddressesJson), &itemIcons[k].Addresses)
+		}
 	}
 
 	apiReturn.SuccessListData(c, itemIcons, 0)

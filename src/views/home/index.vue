@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { VueDraggable } from 'vue-draggable-plus'
-import { NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
+import { type DropdownOption, NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
 import { nextTick, onMounted, ref } from 'vue'
-import { AppIcon, AppStarter, EditItem } from './components'
+import { AISearchConfig, AppIcon, AppStarter, EditItem } from './components'
 import { Clock, SearchBox, SystemMonitor } from '@/components/deskModule'
 import { SvgIcon } from '@/components/common'
 import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
 import { getList as getGroupList } from '@/api/panel/itemIconGroup'
+import { type AISearchResult, aiSearch } from '@/api/panel/aiSearch'
+import { getDefaultAddress } from '@/utils/address'
 
 import { setTitle, updateLocalUserInfo } from '@/utils/cmn'
 import { useAuthStore, usePanelState } from '@/store'
@@ -44,9 +46,21 @@ const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 
 const settingModalShow = ref(false)
+const aiConfigShow = ref(false)
 
 const items = ref<ItemGroup[]>([])
 const filterItems = ref<ItemGroup[]>([])
+
+// ===== AI 智能搜索状态 =====
+const searchMode = ref<'normal' | 'ai'>('normal')
+const searchKeyword = ref('')
+const aiSearchLoading = ref(false)
+const aiSearchResults = ref<Panel.ItemInfo[]>([])
+const aiSearchError = ref<string | null>(null)
+const aiSearchMeta = ref<{ provider: string; model: string; latencyMs: number; fallback: boolean }>(
+  { provider: '', model: '', latencyMs: 0, fallback: false },
+)
+const aiSearchCache = new Map<string, Panel.ItemInfo[]>()
 
 function openPage(openMethod: number, url: string, title?: string) {
   switch (openMethod) {
@@ -68,20 +82,33 @@ function openPage(openMethod: number, url: string, title?: string) {
   }
 }
 
+// 主图标点击：永远打开用户指定的默认地址
 function handleItemClick(itemGroupIndex: number, item: Panel.ItemInfo) {
   if (items.value[itemGroupIndex] && items.value[itemGroupIndex].sortStatus) {
     handleEditItem(item)
     return
   }
 
-  let jumpUrl = ''
+  const address = getDefaultAddress(item)
+  if (!address || !address.url)
+    return
 
-  if (item)
-    jumpUrl = (panelState.networkMode === PanelStateNetworkModeEnum.lan ? item.lanUrl : item.url) as string
-  if (item.lanUrl === '')
-    jumpUrl = item.url
+  openPage(address.openMethod ?? item.openMethod, address.url, item.title)
+}
 
-  openPage(item.openMethod, jumpUrl, item.title)
+// 迷你快捷地址点击：打开对应地址
+function handleAddressClick(address: Panel.ItemAddress, item: Panel.ItemInfo) {
+  if (!address.enabled || !address.url)
+    return
+  openPage(address.openMethod ?? item.openMethod, address.url, `${item.title} - ${address.name}`)
+}
+
+// AI 搜索结果主图标点击：打开默认地址
+function handleAiItemClick(item: Panel.ItemInfo) {
+  const address = getDefaultAddress(item)
+  if (!address || !address.url)
+    return
+  openPage(address.openMethod ?? item.openMethod, address.url, item.title)
 }
 
 function handWindowIframeIdLoad(payload: Event) {
@@ -113,30 +140,33 @@ function updateItemIconGroupByNet(itemIconGroupIndex: number, itemIconGroupId: n
 
 function handleRightMenuSelect(key: string | number) {
   dropdownShow.value = false
-  // console.log(currentRightSelectItem, key)
-  let jumpUrl = panelState.networkMode === PanelStateNetworkModeEnum.lan ? currentRightSelectItem.value?.lanUrl : currentRightSelectItem.value?.url
-  if (currentRightSelectItem.value?.lanUrl === '')
-    jumpUrl = currentRightSelectItem.value.url
+  const cur = currentRightSelectItem.value
+  if (!cur)
+    return
+
+  if (typeof key === 'string' && key.startsWith('address:')) {
+    const id = key.substring('address:'.length)
+    const address = cur.addresses?.find(a => a.id === id)
+    if (address && address.enabled && address.url)
+      openPage(address.openMethod ?? cur.openMethod, address.url, `${cur.title} - ${address.name}`)
+    return
+  }
+
   switch (key) {
     case 'newWindows':
-      window.open(jumpUrl)
+      window.open(getDefaultAddress(cur)?.url || cur.url)
       break
-    case 'openWanUrl':
-      if (currentRightSelectItem.value)
-        openPage(currentRightSelectItem.value?.openMethod, currentRightSelectItem.value?.url, currentRightSelectItem.value?.title)
-      break
-    case 'openLanUrl':
-      if (currentRightSelectItem.value && currentRightSelectItem.value.lanUrl)
-        openPage(currentRightSelectItem.value?.openMethod, currentRightSelectItem.value.lanUrl, currentRightSelectItem.value?.title)
+    case 'openDefault':
+      handleItemClick(0, cur)
       break
     case 'edit':
       // 这里有个奇怪的问题，如果不使用{...}的方式 父组件的值会同步修改 标记一下
-      handleEditItem({ ...currentRightSelectItem.value } as Panel.ItemInfo)
+      handleEditItem({ ...cur } as Panel.ItemInfo)
       break
     case 'delete':
       dialog.warning({
         title: t('common.warning'),
-        content: t('common.deleteConfirmByName', { name: currentRightSelectItem.value?.title }),
+        content: t('common.deleteConfirmByName', { name: cur?.title }),
         positiveText: t('common.confirm'),
         negativeText: t('common.cancel'),
         onPositiveClick: () => {
@@ -177,7 +207,8 @@ function onClickoutside() {
   dropdownShow.value = false
 }
 
-function handleEditSuccess(item: Panel.ItemInfo) {
+function handleEditSuccess(_item: Panel.ItemInfo) {
+  aiSearchCache.clear()
   getList()
 }
 
@@ -219,27 +250,36 @@ function handleSaveSort(itemGroup: ItemGroup) {
   }
 }
 
-function getDropdownMenuOptions() {
-  const dropdownMenuOptions = [
+function getDropdownMenuOptions(): DropdownOption[] {
+  const item = currentRightSelectItem.value
+  const dropdownMenuOptions: DropdownOption[] = [
+    {
+      label: t('iconItem.openDefaultAddress'),
+      key: 'openDefault',
+    },
     {
       label: t('iconItem.newWindowOpen'),
       key: 'newWindows',
     },
-
   ]
 
-  if (currentRightSelectItem.value?.lanUrl && panelState.networkMode === PanelStateNetworkModeEnum.wan) {
-    dropdownMenuOptions.push({
-      label: t('panelHome.openLanUrl'),
-      key: 'openLanUrl',
-    })
-  }
-
-  if (currentRightSelectItem.value?.lanUrl && panelState.networkMode === PanelStateNetworkModeEnum.lan) {
-    dropdownMenuOptions.push({
-      label: t('panelHome.openWanUrl'),
-      key: 'openWanUrl',
-    })
+  // 动态生成所有地址菜单
+  if (item?.addresses) {
+    const addresses = item.addresses
+      .filter(address => address.enabled)
+      .sort((a, b) => a.sort - b.sort)
+    if (addresses.length > 0) {
+      dropdownMenuOptions.push({
+        type: 'divider',
+        key: 'divider-address',
+      })
+      for (const address of addresses) {
+        dropdownMenuOptions.push({
+          label: `${address.name} — ${address.url}`,
+          key: `address:${address.id}`,
+        })
+      }
+    }
   }
 
   if (authStore.visitMode === VisitMode.VISIT_MODE_LOGIN) {
@@ -268,18 +308,25 @@ onMounted(() => {
     setTitle(panelState.panelConfig.logoText)
 })
 
-// 前端搜索过滤
+// 前端普通搜索过滤（也匹配弹性地址）
 function itemFrontEndSearch(keyword?: string) {
-  keyword = keyword?.trim()
-  if (keyword !== '' && panelState.panelConfig.searchBoxSearchIcon) {
+  searchMode.value = 'normal'
+  aiSearchResults.value = []
+  aiSearchError.value = null
+  const kw = (keyword ?? '').trim().toLowerCase()
+  searchKeyword.value = kw
+
+  if (kw !== '' && panelState.panelConfig.searchBoxSearchIcon) {
     const filteredData = ref<ItemGroup[]>([])
     for (let i = 0; i < items.value.length; i++) {
       const element = items.value[i].items?.filter((item: Panel.ItemInfo) => {
-        return (
-          item.title.toLowerCase().includes(keyword?.toLowerCase() ?? '')
-          || item.url.toLowerCase().includes(keyword?.toLowerCase() ?? '')
-          || item.description?.toLowerCase().includes(keyword?.toLowerCase() ?? '')
-        )
+        const hitBase = item.title.toLowerCase().includes(kw)
+          || item.url.toLowerCase().includes(kw)
+          || (item.description?.toLowerCase().includes(kw) ?? false)
+        if (hitBase)
+          return true
+        return (item.addresses ?? []).some(a =>
+          a.name.toLowerCase().includes(kw) || a.url.toLowerCase().includes(kw))
       })
       if (element && element.length > 0)
         filteredData.value.push({ items: element, hoverStatus: false })
@@ -289,6 +336,61 @@ function itemFrontEndSearch(keyword?: string) {
   else {
     filterItems.value = items.value
   }
+}
+
+// AI 智能搜索：回车/点击 AI 时触发，自动降级普通搜索
+async function onAiSearch(keyword?: string) {
+  const kw = (keyword ?? '').trim()
+  searchKeyword.value = kw
+  if (!kw) {
+    searchMode.value = 'normal'
+    return
+  }
+  searchMode.value = 'ai'
+
+  // 命中缓存
+  const cacheKey = kw
+  const cached = aiSearchCache.get(cacheKey)
+  if (cached) {
+    aiSearchResults.value = cached
+    aiSearchError.value = null
+    return
+  }
+
+  aiSearchLoading.value = true
+  aiSearchError.value = null
+  try {
+    const { code, data } = await aiSearch<AISearchResult>({ query: kw, mode: 'ai', limit: 12 })
+    if (code === 0 && data) {
+      aiSearchResults.value = data.results ?? []
+      aiSearchMeta.value = {
+        provider: data.provider ?? '',
+        model: data.model ?? '',
+        latencyMs: 0,
+        fallback: data.fallback ?? false,
+      }
+      if (!data.fallback)
+        aiSearchCache.set(cacheKey, aiSearchResults.value)
+    }
+    else {
+      aiSearchError.value = t('panelHome.aiSearchUnavailable')
+    }
+  }
+  catch (e) {
+    // 失败自动降级普通搜索
+    aiSearchError.value = null
+    searchMode.value = 'normal'
+    itemFrontEndSearch(kw)
+  }
+  aiSearchLoading.value = false
+}
+
+function clearSearch() {
+  searchKeyword.value = ''
+  searchMode.value = 'normal'
+  aiSearchResults.value = []
+  aiSearchError.value = null
+  filterItems.value = items.value
 }
 
 function handleSetHoverStatus(groupIndex: number, hoverStatus: boolean) {
@@ -358,7 +460,48 @@ function handleAddItem(itemIconGroupId?: number) {
             </div>
           </div>
           <div v-if="panelState.panelConfig.searchBoxShow" class="flex mt-[20px] mx-auto sm:w-full lg:w-[80%]">
-            <SearchBox @itemSearch="itemFrontEndSearch" />
+            <SearchBox v-model:search-mode="searchMode" @item-search="itemFrontEndSearch" @ai-search="onAiSearch" />
+          </div>
+
+          <!-- AI 智能搜索结果 -->
+          <div v-if="searchMode === 'ai' && searchKeyword" class="mt-[14px] mx-auto sm:w-full lg:w-[80%]">
+            <div class="ai-search-panel rounded-2xl p-3" :style="{ background: 'rgba(15,23,42,0.55)', color: '#fff' }">
+              <div class="flex items-center justify-between mb-2">
+                <div class="text-sm flex items-center gap-2">
+                  <SvgIcon icon="material-symbols:auto-awesome" class="text-sky-300" />
+                  <span>{{ t('panelHome.aiSearchTitle') }}</span>
+                  <span v-if="aiSearchMeta.provider" class="text-xs opacity-70">· {{ aiSearchMeta.provider }} / {{ aiSearchMeta.model }}</span>
+                  <NTag v-if="aiSearchMeta.fallback" size="small" type="warning" round>
+                    {{ t('panelHome.aiSearchFallback') }}
+                  </NTag>
+                </div>
+                <NButton size="tiny" quaternary @click="clearSearch">
+                  {{ t('common.cancel') }}
+                </NButton>
+              </div>
+
+              <NSpin v-if="aiSearchLoading" size="small" />
+              <div v-else-if="aiSearchError" class="text-sm text-orange-300">
+                {{ aiSearchError }}
+              </div>
+              <div v-else-if="aiSearchResults.length === 0" class="text-sm opacity-70">
+                {{ t('panelHome.aiSearchEmpty') }}
+              </div>
+              <div v-else class="icon-info-box">
+                <div v-for="item in aiSearchResults" :key="item.id" @contextmenu="(e) => handleContextMenu(e, -1, item)">
+                  <AppIcon
+                    class="cursor-pointer"
+                    :item-info="item"
+                    :icon-text-color="panelState.panelConfig.iconTextColor"
+                    :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
+                    :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
+                    :style="0"
+                    @click="handleAiItemClick(item)"
+                    @address-click="(addr) => handleAddressClick(addr, item)"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -422,6 +565,7 @@ function handleAddItem(itemIconGroupId?: number) {
                       :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
                       :style="0"
                       @click="handleItemClick(itemGroupIndex, item)"
+                      @address-click="(addr) => handleAddressClick(addr, item)"
                     />
                   </div>
 
@@ -459,6 +603,7 @@ function handleAddItem(itemIconGroupId?: number) {
                       :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
                       :style="1"
                       @click="handleItemClick(itemGroupIndex, item)"
+                      @address-click="(addr) => handleAddressClick(addr, item)"
                     />
                   </div>
 
@@ -530,6 +675,12 @@ function handleAddItem(itemIconGroupId?: number) {
           </template>
         </NButton>
 
+        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" :title="t('panelHome.aiSearchConfig')" @click="aiConfigShow = !aiConfigShow">
+          <template #icon>
+            <SvgIcon class="text-white font-xl" icon="material-symbols:auto-awesome" />
+          </template>
+        </NButton>
+
         <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_PUBLIC" color="#2a2a2a6b" :title="$t('panelHome.goToLogin')" @click="router.push('/login')">
           <template #icon>
             <SvgIcon class="text-white font-xl" icon="material-symbols:account-circle" />
@@ -557,6 +708,8 @@ function handleAddItem(itemIconGroupId?: number) {
     </NBackTop>
 
     <EditItem v-model:visible="editItemInfoShow" :item-info="editItemInfoData" :item-group-id="currentAddItenIconGroupId" @done="handleEditSuccess" />
+
+    <AISearchConfig v-model:visible="aiConfigShow" />
 
     <!-- 弹窗 -->
     <NModal

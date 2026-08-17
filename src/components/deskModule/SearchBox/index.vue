@@ -1,24 +1,33 @@
 <script setup lang="ts">
-import { defineEmits, onMounted, ref } from 'vue'
+import { computed, defineEmits, onMounted, ref } from 'vue'
 import { NAvatar, NCheckbox } from 'naive-ui'
 import { SvgIcon } from '@/components/common'
 import { useModuleConfig } from '@/store/modules'
 import { useAuthStore } from '@/store'
 import { VisitMode } from '@/enums/auth'
+import { t } from '@/locales'
 
 import SvgSrcBaidu from '@/assets/search_engine_svg/baidu.svg'
 import SvgSrcBing from '@/assets/search_engine_svg/bing.svg'
 import SvgSrcGoogle from '@/assets/search_engine_svg/google.svg'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   background?: string
   textColor?: string
+  searchMode?: 'normal' | 'ai'
 }>(), {
   background: '#2a2a2a6b',
   textColor: 'white',
+  searchMode: 'normal',
 })
 
-const emits = defineEmits(['itemSearch'])
+const emits = defineEmits<{
+  (e: 'itemSearch', keyword: string): void
+  (e: 'aiSearch', keyword: string): void
+  (e: 'update:searchMode', mode: 'normal' | 'ai'): void
+}>()
+
+const isAiMode = computed(() => props.searchMode === 'ai')
 
 interface State {
   currentSearchEngine: DeskModule.SearchBox.SearchEngine
@@ -100,8 +109,27 @@ function replaceOrAppendKeywordToUrl(url: string, keyword: string) {
   return url + (keyword ? `${encodeURIComponent(keyword)}` : '')
 }
 
-const handleItemSearch = () => {
+const placeholder = computed(() =>
+  isAiMode.value ? t('panelHome.aiSearchPlaceholder') : t('deskModule.searchBox.inputPlaceholder'),
+)
+
+// 普通模式下实时过滤；AI 模式下不触发普通过滤，交由 AI 搜索提交
+function onInput() {
+  if (isAiMode.value)
+    return
   emits('itemSearch', searchTerm.value)
+}
+
+// Enter / 搜索图标：AI 模式提交 AI 搜索，普通模式走搜索引擎
+function handleSubmit() {
+  if (isAiMode.value)
+    emits('aiSearch', searchTerm.value)
+  else
+    handleSearchClick()
+}
+
+function toggleAiMode() {
+  emits('update:searchMode', isAiMode.value ? 'normal' : 'ai')
 }
 
 function handleClearSearchTerm() {
@@ -120,18 +148,26 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="search-box w-full" @keydown.enter="handleSearchClick" @keydown.esc="handleClearSearchTerm">
+  <div class="search-box w-full" @keydown.enter="handleSubmit" @keydown.esc="handleClearSearchTerm">
     <div class="search-container flex rounded-2xl items-center justify-center text-white w-full" :style="{ background, color: textColor }" :class="{ focused: isFocused }">
       <div class="search-box-btn-engine w-[40px] flex justify-center cursor-pointer" @click="handleEngineClick">
         <NAvatar :src="state.currentSearchEngine.iconSrc" style="background-color: transparent;" :size="20" />
       </div>
 
-      <input v-model="searchTerm" :placeholder="$t('deskModule.searchBox.inputPlaceholder')" @focus="onFocus" @blur="onBlur" @input="handleItemSearch">
+      <div
+        class="search-box-btn-ai w-[25px] flex justify-center cursor-pointer transition-colors"
+        :class="isAiMode ? 'text-sky-300' : 'opacity-60 hover:opacity-100'"
+        :title="t('panelHome.aiSearch')" @click="toggleAiMode"
+      >
+        <SvgIcon style="width: 20px;height: 20px;" icon="material-symbols:auto-awesome" />
+      </div>
+
+      <input v-model="searchTerm" :placeholder="placeholder" @focus="onFocus" @blur="onBlur" @input="onInput">
 
       <div v-if="searchTerm !== ''" class="search-box-btn-clear w-[25px] mr-[10px] flex justify-center cursor-pointer" @click="handleClearSearchTerm">
         <SvgIcon style="width: 20px;height: 20px;" icon="line-md:close-small" />
       </div>
-      <div class="search-box-btn-search w-[25px] flex justify-center cursor-pointer" @click="handleSearchClick">
+      <div class="search-box-btn-search w-[25px] flex justify-center cursor-pointer" @click="handleSubmit">
         <SvgIcon style="width: 20px;height: 20px;" icon="iconamoon:search-fill" />
       </div>
     </div>

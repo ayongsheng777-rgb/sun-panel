@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { UploadFileInfo } from 'naive-ui'
 import { NButton, NCard, NColorPicker, NGrid, NGridItem, NInput, NInputGroup, NPopconfirm, NSelect, NSlider, NSwitch, NUpload, NUploadDragger, useMessage } from 'naive-ui'
 import { useAuthStore, usePanelState } from '@/store'
@@ -11,6 +11,15 @@ const authStore = useAuthStore()
 const panelState = usePanelState()
 const ms = useMessage()
 const showWallpaperInput = ref(false)
+
+// NInput 仅接受字符串，这里做 number <-> string 桥接（maxWidth 语义为数值）
+const maxWidthProxy = computed({
+  get: () => String(panelState.panelConfig.maxWidth ?? ''),
+  set: (v: string) => {
+    const n = Number(v)
+    panelState.panelConfig.maxWidth = (v.trim() === '' || Number.isNaN(n)) ? undefined : n
+  },
+})
 
 const isSaveing = ref(false)
 
@@ -249,7 +258,7 @@ function resetPanelConfig() {
             <span class="mr-[10px]">{{ $t('apps.baseSettings.maxWidth') }}</span>
             <div class="flex">
               <NInputGroup>
-                <NInput v-model:value="panelState.panelConfig.maxWidth" size="small" type="number" :maxlength="10" :style="{ width: '100px' }" placeholder="1200" />
+                <NInput v-model:value="maxWidthProxy" size="small" type="text" :maxlength="10" :style="{ width: '100px' }" placeholder="1200" />
                 <NSelect v-model:value="panelState.panelConfig.maxWidthUnit" :style="{ width: '80px' }" :options="maxWidthUnitOption" size="small" />
               </NInputGroup>
             </div>

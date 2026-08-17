@@ -186,7 +186,8 @@
     "username": "Username",
     "verify": "Verify",
     "warning": "Warning",
-    "yes": "Yes"
+    "yes": "Yes",
+    "loadFail": "Load failed"
   },
   "deskModule": {
     "clock": {
@@ -233,7 +234,15 @@
     "onlineIconLibrary": "Online icon library",
     "openMethod": "Open method",
     "selectUpload": "Local upload",
-    "url": "URL"
+    "url": "URL",
+    "addressList": "Address list",
+    "addressName": "Address name",
+    "addressRequired": "At least one safe URL (http/https) is required",
+    "defaultAddress": "Default address",
+    "setDefault": "Set as default",
+    "addAddress": "Add address",
+    "enabled": "Enabled",
+    "openDefaultAddress": "Open default address"
   },
   "login": {
     "loginButton": "Login",
@@ -248,7 +257,14 @@
     "changeToWanModelSuccess": "Switched to WAN mode (mode status saved locally)",
     "goToLogin": "Go to login",
     "openLanUrl": "Open LAN URL",
-    "openWanUrl": "Open WAN URL"
+    "openWanUrl": "Open WAN URL",
+    "aiSearch": "AI Search",
+    "aiSearchPlaceholder": "Describe the site you want in natural language…",
+    "aiSearchTitle": "AI Smart Search",
+    "aiSearchFallback": "Fell back to normal search",
+    "aiSearchEmpty": "No matching site",
+    "aiSearchConfig": "AI Search Settings",
+    "aiSearchUnavailable": "AI search unavailable, showing normal results instead"
   },
   "settingUserInfo": {
     "confirmLogoutText": "Are you sure you want to logout?",
@@ -259,5 +275,26 @@
     "newPassword": "New password",
     "oldPassword": "Old password",
     "updatePassword": "Change password"
+  },
+  "aiSearch": {
+    "title": "AI Smart Search Settings",
+    "enabled": "Enable AI search",
+    "enabledHint": "When off, falls back to keyword search",
+    "defaultProvider": "Default provider",
+    "baseUrl": "Base URL",
+    "apiKey": "API Key",
+    "apiKeyPlaceholder": "sk-...",
+    "keepKeyHint": "Leave empty to keep the saved key",
+    "model": "Model",
+    "timeout": "Timeout",
+    "listModels": "List models",
+    "test": "Test connection",
+    "save": "Save",
+    "saveSuccess": "Saved",
+    "listFail": "Failed to list models",
+    "noModels": "No available models for this provider",
+    "testDone": "Test done: {ok}/{total} available",
+    "testFail": "Test failed",
+    "fail": "Failed"
   }
 }

@@ -62,6 +62,11 @@ function http<T = any>(
       return res.data
     }
 
+    // 1008 需要输入 OTP 动态码 / 1009 动态码错误：由登录页自行切换到 OTP 输入态，
+    // 这里静默返回，不能 reject（否则会弹错误框、且登录页拿不到 code 无法跳转）。
+    if (res.data.code === 1008 || res.data.code === 1009)
+      return res.data
+
     if (res.data.code === -1) {
       // message.warning(res.data.msg)
       // router.push({ path: '/login' })

@@ -14,6 +14,7 @@ declare namespace User{
 		token?:string
 		isAdmin?:number
 		otpEnabled?:boolean
+		aiAdmin?:boolean
 	}
 
 	interface GetReferralCodeResponse{

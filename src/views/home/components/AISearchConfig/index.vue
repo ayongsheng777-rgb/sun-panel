@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NCard, NDivider, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, NSpin, NSwitch, NTag, useMessage } from 'naive-ui'
 import { getAIConfig, listAIModels, saveAIConfig, testAIModels } from '@/api/panel/aiSearch'
 import { t } from '@/locales'
 
-const props = defineProps<{ visible: boolean }>()
+const props = withDefaults(defineProps<{ visible?: boolean; embedded?: boolean }>(), {
+  visible: false,
+  embedded: false,
+})
 const emit = defineEmits<{ (e: 'update:visible', visible: boolean): void }>()
 
 const ms = useMessage()
@@ -72,10 +75,18 @@ async function load() {
   }
 }
 
+// 弹窗模式：visible 变 true 时加载；内嵌模式：挂载即加载
 watch(() => props.visible, (v) => {
   if (v) {
     testResults.value = []
     Object.keys(modelLists).forEach(k => delete modelLists[k])
+    load()
+  }
+})
+
+onMounted(() => {
+  if (props.embedded) {
+    testResults.value = []
     load()
   }
 })
@@ -161,7 +172,88 @@ const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.api
 </script>
 
 <template>
+  <template v-if="embedded">
+    <div class="p-1">
+      <NSpin :show="loading">
+        <NForm label-placement="top">
+          <NFormItem :label="t('aiSearch.enabled')">
+            <NSwitch v-model:value="form.enabled" />
+            <span class="ml-2 text-xs text-zinc-400">{{ t('aiSearch.enabledHint') }}</span>
+          </NFormItem>
+
+          <NFormItem :label="t('aiSearch.defaultProvider')">
+            <NSelect
+              v-model:value="form.defaultProvider" :options="defaultProviderOptions"
+              style="max-width: 280px;" :disabled="!hasAnyKey"
+            />
+          </NFormItem>
+
+          <NDivider />
+
+          <NCard
+            v-for="p in PROVIDER_LIST" :key="p" size="small" class="mb-3"
+            :title="p === 'deepseek' ? 'DeepSeek' : p === 'nvidia' ? 'NVIDIA' : '自定义(OpenAI兼容)'"
+          >
+            <template #header-extra>
+              <NSwitch v-model:value="form.providers[p].enabled" size="small" />
+            </template>
+            <NFormItem :label="t('aiSearch.baseUrl')">
+              <NInput v-model:value="form.providers[p].baseUrl" placeholder="https://..." />
+            </NFormItem>
+            <NFormItem :label="t('aiSearch.apiKey')">
+              <NInput
+                v-model:value="form.providers[p].apiKey" type="password" show-password-on="click"
+                :placeholder="originalKeys[p] ? t('aiSearch.keepKeyHint') : t('aiSearch.apiKeyPlaceholder')"
+              />
+            </NFormItem>
+            <NFormItem :label="t('aiSearch.model')">
+              <NInput v-model:value="form.providers[p].model" placeholder="model-id" />
+            </NFormItem>
+            <NFormItem :label="t('aiSearch.timeout')">
+              <NInputNumber v-model:value="form.providers[p].timeout" :min="1000" :step="1000" style="width: 200px;" />
+              <span class="ml-2 text-xs text-zinc-400">ms</span>
+            </NFormItem>
+
+            <div class="flex items-center gap-2">
+              <NButton size="small" @click="handleListModels(p)">
+                {{ t('aiSearch.listModels') }}
+              </NButton>
+              <div v-if="modelLists[p] && modelLists[p].length" class="flex flex-wrap gap-1">
+                <NTag v-for="m in modelLists[p]" :key="m.id" size="small" type="success" round>
+                  {{ m.id }}
+                </NTag>
+              </div>
+            </div>
+          </NCard>
+
+          <NDivider />
+          <div class="flex items-center gap-3">
+            <NButton :loading="testing" @click="handleTest">
+              {{ t('aiSearch.test') }}
+            </NButton>
+            <NButton type="primary" :loading="saving" @click="handleSave">
+              {{ t('aiSearch.save') }}
+            </NButton>
+          </div>
+
+          <div v-if="testResults.length" class="mt-3">
+            <div
+              v-for="(r, i) in testResults" :key="i"
+              class="flex items-center justify-between rounded-lg bg-zinc-100 dark:bg-zinc-800 px-3 py-2 mb-1 text-sm"
+            >
+              <span>{{ r.model }}</span>
+              <NTag :type="r.success ? 'success' : 'error'" size="small" round>
+                {{ r.success ? `${r.latencyMs}ms` : (r.error || t('aiSearch.fail')) }}
+              </NTag>
+            </div>
+          </div>
+        </NForm>
+      </NSpin>
+    </div>
+  </template>
+
   <NModal
+    v-else
     :show="visible" preset="card" style="max-width: 760px; max-height: 86vh; overflow: auto;"
     :title="t('aiSearch.title')" :bordered="false" size="medium" role="dialog" aria-modal="true"
     @update:show="(v: boolean) => emit('update:visible', v)"

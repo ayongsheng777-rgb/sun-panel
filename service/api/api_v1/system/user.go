@@ -36,6 +36,7 @@ func (a *UserApi) GetAuthInfo(c *gin.Context) {
 	user.Name = userInfo.Name
 	user.Role = userInfo.Role
 	user.Username = userInfo.Username
+	user.AiAdmin = userInfo.AiAdmin
 	apiReturn.SuccessData(c, gin.H{
 		"user":      user,
 		"visitMode": visitMode,
@@ -148,4 +149,65 @@ func (a *UserApi) GetReferralCode(c *gin.Context) {
 	}
 
 	apiReturn.SuccessData(c, systemApiStructs.GetReferralCodeResp{ReferralCode: userInfo.ReferralCode})
+}
+
+// 基础版权限清单：列出所有账号及其 AI 管理员权限（仅管理员可访问）
+func (a *UserApi) GetAdminUserList(c *gin.Context) {
+	userInfo, _ := base.GetCurrentUserInfo(c)
+	if userInfo.Role != 1 {
+		apiReturn.ErrorNoAccess(c)
+		return
+	}
+	// 确保管理员默认拥有 AI 管理权限（幂等）
+	global.Db.Model(&models.User{}).Where("role = ? AND ai_admin = ?", 1, 0).Update("ai_admin", 1)
+
+	var users []models.User
+	if err := global.Db.Order("id asc").Find(&users).Error; err != nil {
+		apiReturn.ErrorDatabase(c, err.Error())
+		return
+	}
+	list := make([]gin.H, 0, len(users))
+	for _, u := range users {
+		list = append(list, gin.H{
+			"id":         u.ID,
+			"username":   u.Username,
+			"name":       u.Name,
+			"role":       u.Role,
+			"aiAdmin":    u.AiAdmin,
+			"otpEnabled": u.OtpEnabled,
+		})
+	}
+	apiReturn.SuccessData(c, list)
+}
+
+// 切换某个账号的 AI 管理员权限（仅管理员可访问）
+func (a *UserApi) UpdateUserAiPermission(c *gin.Context) {
+	userInfo, _ := base.GetCurrentUserInfo(c)
+	if userInfo.Role != 1 {
+		apiReturn.ErrorNoAccess(c)
+		return
+	}
+	var req struct {
+		UserId  uint `json:"userId"`
+		AiAdmin bool `json:"aiAdmin"`
+	}
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		apiReturn.ErrorParamFomat(c, err.Error())
+		return
+	}
+	if req.UserId == 0 {
+		apiReturn.ErrorParamFomat(c, "userId 不能为空")
+		return
+	}
+	// 防止管理员误关自己的 AI 管理权限导致锁死
+	if req.UserId == userInfo.ID && !req.AiAdmin {
+		apiReturn.ErrorCode(c, 1011, "不能关闭自己的 AI 管理权限", nil)
+		return
+	}
+	mUser := models.User{}
+	if err := mUser.UpdateUserInfoByUserId(req.UserId, map[string]interface{}{"ai_admin": req.AiAdmin}); err != nil {
+		apiReturn.ErrorDatabase(c, err.Error())
+		return
+	}
+	apiReturn.Success(c)
 }

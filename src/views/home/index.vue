@@ -2,7 +2,7 @@
 import { VueDraggable } from 'vue-draggable-plus'
 import { type DropdownOption, NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
 import { nextTick, onMounted, ref } from 'vue'
-import { AISearchConfig, AIAssistant, AppIcon, AppStarter, EditItem, SecuritySetting } from './components'
+import { AISearchConfig, AIAssistant, AdminPanel, AppIcon, AppStarter, EditItem, SecuritySetting } from './components'
 import { Clock, SearchBox, SystemMonitor } from '@/components/deskModule'
 import { SvgIcon } from '@/components/common'
 import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
@@ -49,6 +49,7 @@ const settingModalShow = ref(false)
 const aiConfigShow = ref(false)
 const securityShow = ref(false)
 const aiAssistantShow = ref(false)
+const adminPanelShow = ref(false)
 
 const items = ref<ItemGroup[]>([])
 const filterItems = ref<ItemGroup[]>([])
@@ -677,21 +678,15 @@ function handleAddItem(itemIconGroupId?: number) {
           </template>
         </NButton>
 
-        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" :title="t('panelHome.aiSearchConfig')" @click="aiConfigShow = !aiConfigShow">
+        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" title="管理面板" @click="adminPanelShow = !adminPanelShow">
           <template #icon>
-            <SvgIcon class="text-white font-xl" icon="material-symbols:auto-awesome" />
+            <SvgIcon class="text-white font-xl" icon="material-symbols:admin-panel-settings" />
           </template>
         </NButton>
 
         <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" title="AI 助手" @click="aiAssistantShow = !aiAssistantShow">
           <template #icon>
             <SvgIcon class="text-white font-xl" icon="material-symbols:smart-toy-outline" />
-          </template>
-        </NButton>
-
-        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" title="安全中心" @click="securityShow = !securityShow">
-          <template #icon>
-            <SvgIcon class="text-white font-xl" icon="material-symbols:lock-outline" />
           </template>
         </NButton>
 
@@ -723,11 +718,9 @@ function handleAddItem(itemIconGroupId?: number) {
 
     <EditItem v-model:visible="editItemInfoShow" :item-info="editItemInfoData" :item-group-id="currentAddItenIconGroupId" @done="handleEditSuccess" />
 
-    <AISearchConfig v-model:visible="aiConfigShow" />
-
     <AIAssistant v-model:visible="aiAssistantShow" @done="getList" />
 
-    <SecuritySetting v-model:visible="securityShow" />
+    <AdminPanel v-model:visible="adminPanelShow" />
 
     <!-- 弹窗 -->
     <NModal

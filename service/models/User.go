@@ -21,6 +21,9 @@ type User struct {
 	OtpEnabled bool   `gorm:"type:tinyint(1);default:0" json:"otpEnabled"` // 是否已绑定 OTP
 	OtpSecret  string `gorm:"type:varchar(64)" json:"-"`                   // TOTP 密钥（不外露 JSON）
 
+	// AI 管理员权限（基础版权限清单）：是否可让 AI 自动增改网址 / 使用 AI 管理功能
+	AiAdmin bool `gorm:"type:tinyint(1);default:0" json:"aiAdmin"`
+
 	UserId uint `gorm:"-"  json:"userId"`
 }
 
@@ -110,6 +113,9 @@ func (m *User) UpdateUserInfoByUserId(user_id uint, updateInfo map[string]interf
 	}
 	if v, ok := updateInfo["otp_secret"]; ok {
 		data["otp_secret"] = v
+	}
+	if v, ok := updateInfo["ai_admin"]; ok {
+		data["ai_admin"] = v
 	}
 
 	err := Db.Model(&mUser).Where("id=?", user_id).Updates(data).Error

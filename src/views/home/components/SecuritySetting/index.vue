@@ -4,7 +4,10 @@ import { onMounted, ref } from 'vue'
 import { deviceDelete, deviceList, otpConfirm, otpDisable, otpSetup } from '@/api/otp'
 import QRCode from 'qrcode'
 
-const props = defineProps<{ visible: boolean }>()
+const props = withDefaults(defineProps<{ visible?: boolean; embedded?: boolean }>(), {
+  visible: false,
+  embedded: false,
+})
 const emit = defineEmits<{ (e: 'update:visible', visible: boolean): void }>()
 
 const ms = useMessage()
@@ -85,7 +88,7 @@ async function removeDevice(id: number) {
 }
 
 onMounted(() => {
-  if (props.visible) {
+  if (props.embedded || props.visible) {
     loadStatus()
     loadDevices()
   }
@@ -93,7 +96,60 @@ onMounted(() => {
 </script>
 
 <template>
+  <template v-if="embedded">
+    <div class="p-1">
+      <NCard title="双重验证 (OTP)" :bordered="false" size="small">
+        <template v-if="!enabled && !setupMode">
+          <p class="mb-2 text-sm text-slate-500">
+            开启后，登录时需额外输入验证器（Google/Microsoft Authenticator）中的动态码，大幅提升账号安全。
+          </p>
+          <NButton type="primary" @click="startSetup">开启双重验证</NButton>
+        </template>
+
+        <template v-else-if="!enabled && setupMode">
+          <p class="mb-2 text-sm text-slate-500">用验证器 App 扫描下方二维码，输入 6 位动态码完成绑定：</p>
+          <div class="flex flex-col items-center">
+            <img v-if="otpQr" :src="otpQr" alt="otp qr" class="mb-2 rounded border bg-white p-1" />
+            <NInput v-model:value="otpCode" placeholder="输入 6 位动态码" maxlength="6" class="w-full" />
+            <NSpace class="mt-3">
+              <NButton type="primary" @click="confirmBind">确认开启</NButton>
+              <NButton @click="setupMode = false">取消</NButton>
+            </NSpace>
+          </div>
+        </template>
+
+        <template v-else>
+          <NSpace align="center">
+            <NTag type="success">已开启</NTag>
+            <NButton size="small" type="error" @click="disableOtp">关闭</NButton>
+          </NSpace>
+        </template>
+      </NCard>
+
+      <NCard title="受信任设备" :bordered="false" size="small" class="mt-3">
+        <NList v-if="devices.length" bordered>
+          <NListItem v-for="d in devices" :key="d.id">
+            <div class="flex w-full items-center justify-between">
+              <div class="text-sm">
+                <div class="truncate" style="max-width: 300px;">{{ d.name }}</div>
+                <div class="text-xs text-slate-400">IP: {{ d.ip }} · 到期: {{ d.trustedUntil }}</div>
+              </div>
+              <NPopconfirm @positive-click="removeDevice(d.id)">
+                <template #trigger>
+                  <NButton size="small" type="error" quaternary>撤销</NButton>
+                </template>
+                确定撤销该受信任设备？
+              </NPopconfirm>
+            </div>
+          </NListItem>
+        </NList>
+        <p v-else class="text-sm text-slate-400">暂无受信任设备</p>
+      </NCard>
+    </div>
+  </template>
+
   <NModal
+    v-else
     :show="props.visible" preset="card" title="安全中心"
     style="max-width: 520px;" @update:show="(v: boolean) => emit('update:visible', v)"
   >

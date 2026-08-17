@@ -20,10 +20,18 @@ const testResults = ref<Panel.AIModelTestResult[]>([])
 // 加载到的原始 key（用于「留空保留原值」）
 const originalKeys = reactive<Record<string, string>>({})
 
-const PROVIDER_LIST: Panel.AIProviderConfig['provider'][] = ['deepseek', 'nvidia', 'custom']
+const PROVIDER_LIST: Panel.AIProviderConfig['provider'][] = ['openai', 'deepseek', 'nvidia', 'gemini', 'custom']
+
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: 'OpenAI',
+  deepseek: 'DeepSeek',
+  nvidia: 'NVIDIA',
+  gemini: 'Gemini',
+  custom: '自定义(OpenAI兼容)',
+}
 
 const providerOptions = PROVIDER_LIST.map(p => ({
-  label: p === 'deepseek' ? 'DeepSeek' : p === 'nvidia' ? 'NVIDIA' : '自定义(OpenAI兼容)',
+  label: PROVIDER_LABELS[p] || p,
   value: p,
 }))
 
@@ -35,8 +43,10 @@ function emptyConfig(): Panel.AIConfig {
     defaultProvider: 'deepseek',
     strategy: 'auto',
     providers: {
+      openai: { provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini', enabled: false, timeout: 8000 },
       deepseek: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', enabled: true, timeout: 8000 },
       nvidia: { provider: 'nvidia', baseUrl: 'https://integrate.api.nvidia.com/v1', apiKey: '', model: 'nvidia/llama-3.1-nemotron-70b-instruct', enabled: false, timeout: 8000 },
+      gemini: { provider: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: '', model: 'gemini-2.0-flash', enabled: false, timeout: 8000 },
       custom: { provider: 'custom', baseUrl: '', apiKey: '', model: '', enabled: false, timeout: 8000 },
     },
   }
@@ -192,7 +202,7 @@ const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.api
 
           <NCard
             v-for="p in PROVIDER_LIST" :key="p" size="small" class="mb-3"
-            :title="p === 'deepseek' ? 'DeepSeek' : p === 'nvidia' ? 'NVIDIA' : '自定义(OpenAI兼容)'"
+            :title="PROVIDER_LABELS[p] || p"
           >
             <template #header-extra>
               <NSwitch v-model:value="form.providers[p].enabled" size="small" />
@@ -212,6 +222,14 @@ const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.api
             <NFormItem :label="t('aiSearch.timeout')">
               <NInputNumber v-model:value="form.providers[p].timeout" :min="1000" :step="1000" style="width: 200px;" />
               <span class="ml-2 text-xs text-zinc-400">ms</span>
+            </NFormItem>
+            <NFormItem :label="t('aiSearch.temperature')">
+              <NInputNumber v-model:value="form.providers[p].temperature" :min="0" :max="2" :step="0.1" style="width: 200px;" />
+              <span class="ml-2 text-xs text-zinc-400">{{ t('aiSearch.temperatureHint') }}</span>
+            </NFormItem>
+            <NFormItem :label="t('aiSearch.maxTokens')">
+              <NInputNumber v-model:value="form.providers[p].maxTokens" :min="0" :step="100" style="width: 200px;" />
+              <span class="ml-2 text-xs text-zinc-400">{{ t('aiSearch.maxTokensHint') }}</span>
             </NFormItem>
 
             <div class="flex items-center gap-2">

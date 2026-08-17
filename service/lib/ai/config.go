@@ -38,6 +38,13 @@ func DefaultConfig() AIConfig {
 		DefaultProvider: Provider(envDefault("AI_DEFAULT_PROVIDER", string(ProviderDeepSeek))),
 		Strategy:        "auto",
 		Providers: map[string]AIProviderConfig{
+			string(ProviderOpenAI): {
+				Provider: ProviderOpenAI,
+				BaseURL:  envDefault("OPENAI_BASE_URL", DefaultOpenAIBaseURL),
+				APIKey:   os.Getenv("OPENAI_API_KEY"),
+				Enabled:  false,
+				Timeout:  envInt("AI_SEARCH_TIMEOUT", 8000),
+			},
 			string(ProviderDeepSeek): {
 				Provider: ProviderDeepSeek,
 				BaseURL:  envDefault("DEEPSEEK_BASE_URL", DefaultDeepSeekBaseURL),
@@ -50,6 +57,13 @@ func DefaultConfig() AIConfig {
 				BaseURL:  envDefault("NVIDIA_BASE_URL", DefaultNvidiaBaseURL),
 				APIKey:   os.Getenv("NVIDIA_API_KEY"),
 				Enabled:  true,
+				Timeout:  envInt("AI_SEARCH_TIMEOUT", 8000),
+			},
+			string(ProviderGemini): {
+				Provider: ProviderGemini,
+				BaseURL:  envDefault("GEMINI_BASE_URL", DefaultGeminiBaseURL),
+				APIKey:   os.Getenv("GEMINI_API_KEY"),
+				Enabled:  false,
 				Timeout:  envInt("AI_SEARCH_TIMEOUT", 8000),
 			},
 		},
@@ -81,6 +95,11 @@ func LoadConfig(userId uint) AIConfig {
 		}
 	}
 	// 环境变量可覆盖 key（避免明文入库时缺失）
+	if k := os.Getenv("OPENAI_API_KEY"); k != "" {
+		p := cfg.Providers[string(ProviderOpenAI)]
+		p.APIKey = k
+		cfg.Providers[string(ProviderOpenAI)] = p
+	}
 	if k := os.Getenv("DEEPSEEK_API_KEY"); k != "" {
 		p := cfg.Providers[string(ProviderDeepSeek)]
 		p.APIKey = k
@@ -90,6 +109,11 @@ func LoadConfig(userId uint) AIConfig {
 		p := cfg.Providers[string(ProviderNvidia)]
 		p.APIKey = k
 		cfg.Providers[string(ProviderNvidia)] = p
+	}
+	if k := os.Getenv("GEMINI_API_KEY"); k != "" {
+		p := cfg.Providers[string(ProviderGemini)]
+		p.APIKey = k
+		cfg.Providers[string(ProviderGemini)] = p
 	}
 	return cfg
 }

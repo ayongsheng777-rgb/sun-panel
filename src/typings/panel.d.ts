@@ -113,17 +113,20 @@ declare namespace Panel {
     }
 
     interface AIProviderConfig {
-        provider: 'deepseek' | 'nvidia' | 'custom'
+        provider: 'openai' | 'deepseek' | 'nvidia' | 'gemini' | 'custom'
         baseUrl: string
         apiKey: string
         model: string
         enabled: boolean
         timeout: number
+        temperature?: number
+        maxTokens?: number
+        extraHeaders?: Record<string, string>
     }
 
     interface AIConfig {
         enabled: boolean
-        defaultProvider: 'deepseek' | 'nvidia' | 'custom'
+        defaultProvider: 'openai' | 'deepseek' | 'nvidia' | 'gemini' | 'custom'
         strategy: string
         providers: Record<string, AIProviderConfig>
     }

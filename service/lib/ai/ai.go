@@ -17,15 +17,19 @@ import (
 type Provider string
 
 const (
+	ProviderOpenAI   Provider = "openai"
 	ProviderDeepSeek Provider = "deepseek"
 	ProviderNvidia   Provider = "nvidia"
+	ProviderGemini   Provider = "gemini"
 	ProviderCustom   Provider = "custom"
 )
 
 // Default base url
 const (
+	DefaultOpenAIBaseURL   = "https://api.openai.com/v1"
 	DefaultDeepSeekBaseURL = "https://api.deepseek.com"
 	DefaultNvidiaBaseURL   = "https://integrate.api.nvidia.com/v1"
+	DefaultGeminiBaseURL   = "https://generativelanguage.googleapis.com/v1beta/openai" // Gemini 的 OpenAI 兼容端点
 )
 
 // ChatMessage 对话消息
@@ -62,6 +66,10 @@ type AIProviderConfig struct {
 	Model    string   `json:"model"`
 	Enabled  bool     `json:"enabled"`
 	Timeout  int      `json:"timeout"` // 毫秒
+
+	Temperature  float64           `json:"temperature,omitempty"`  // 模型支持时生效，<=0 用默认 0.2
+	MaxTokens    int               `json:"maxTokens,omitempty"`    // 模型支持时生效，<=0 用默认 800
+	ExtraHeaders map[string]string `json:"extraHeaders,omitempty"` // 额外请求头（按需）
 }
 
 // AIConfig 全局 AI 搜索配置（仅服务端保存）
@@ -85,7 +93,16 @@ type OpenAICompatibleProvider struct{}
 func (OpenAICompatibleProvider) baseURL(cfg AIProviderConfig) string {
 	u := strings.TrimRight(cfg.BaseURL, "/")
 	if u == "" {
-		u = DefaultDeepSeekBaseURL
+		switch cfg.Provider {
+		case ProviderOpenAI:
+			u = DefaultOpenAIBaseURL
+		case ProviderNvidia:
+			u = DefaultNvidiaBaseURL
+		case ProviderGemini:
+			u = DefaultGeminiBaseURL
+		default:
+			u = DefaultDeepSeekBaseURL
+		}
 	}
 	return u
 }
@@ -137,11 +154,19 @@ func (p OpenAICompatibleProvider) ListModels(ctx context.Context, cfg AIProvider
 }
 
 func (p OpenAICompatibleProvider) chatWithFormat(ctx context.Context, cfg AIProviderConfig, messages []ChatMessage, wantJSON bool) (string, error) {
+	temp := 0.2
+	if cfg.Temperature > 0 {
+		temp = cfg.Temperature
+	}
+	maxTokens := 800
+	if cfg.MaxTokens > 0 {
+		maxTokens = cfg.MaxTokens
+	}
 	payload := map[string]any{
 		"model":       cfg.Model,
 		"messages":    messages,
-		"temperature": 0.2,
-		"max_tokens": 800,
+		"temperature": temp,
+		"max_tokens":  maxTokens,
 	}
 	if wantJSON {
 		payload["response_format"] = map[string]any{"type": "json_object"}
@@ -157,6 +182,9 @@ func (p OpenAICompatibleProvider) chatWithFormat(ctx context.Context, cfg AIProv
 	req.Header.Set("Content-Type", "application/json")
 	if cfg.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	}
+	for k, v := range cfg.ExtraHeaders {
+		req.Header.Set(k, v)
 	}
 	client := &http.Client{Timeout: p.timeout(cfg)}
 	resp, err := client.Do(req)
@@ -216,8 +244,14 @@ func (p OpenAICompatibleProvider) TestModel(ctx context.Context, cfg AIProviderC
 type ProviderManager struct{}
 
 func (ProviderManager) GetAdapter(cfg AIProviderConfig) AIProviderAdapter {
-	// 所有兼容 OpenAI 协议的服务商统一实现
-	return OpenAICompatibleProvider{}
+	// OpenAI / DeepSeek / NVIDIA / Gemini(OpenAI兼容端点) / Custom 统一走 OpenAI 兼容协议
+	// Gemini 若使用其原生协议再单独实现 GeminiProvider，这里先走兼容端点。
+	switch cfg.Provider {
+	case ProviderOpenAI, ProviderDeepSeek, ProviderNvidia, ProviderGemini, ProviderCustom:
+		return OpenAICompatibleProvider{}
+	default:
+		return OpenAICompatibleProvider{}
+	}
 }
 
 func envDefault(key, def string) string {

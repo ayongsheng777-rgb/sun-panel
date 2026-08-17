@@ -60,10 +60,10 @@ func (a *AiManage) AddWebsite(c *gin.Context) {
 		return
 	}
 
-	// 图标：先用文字图标（标题首字符），智能图标系统后续异步补齐
-	firstChar := firstRune(pick.Title)
-	if firstChar == "" {
-		firstChar = "网"
+	// 图标：优先用网站 favicon 远程 URL，失败回退文字图标（标题首字符）
+	icon := datatype.ItemIconIconInfo{ItemType: 1, Text: firstRune(pick.Title)}
+	if pick.Favicon != "" {
+		icon = datatype.ItemIconIconInfo{ItemType: 2, Src: pick.Favicon}
 	}
 
 	addrType := "https"
@@ -79,7 +79,7 @@ func (a *AiManage) AddWebsite(c *gin.Context) {
 		Sort:            9999,
 		ItemIconGroupId: groupId,
 		UserId:          userInfo.ID,
-		Icon:            datatype.ItemIconIconInfo{ItemType: 1, Text: firstChar},
+		Icon:            icon,
 		Addresses: []datatype.ItemAddress{{
 			Id:         uuid.New().String(),
 			Name:       "默认",

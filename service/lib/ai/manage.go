@@ -46,6 +46,7 @@ type WebsitePick struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Category    string `json:"category"`
+	Favicon     string `json:"favicon"`
 }
 
 // ExtractKeyword 从用户指令中提取搜索关键词（本地规则，简单可靠）
@@ -159,6 +160,9 @@ func AddWebsite(ctx context.Context, cfg AIConfig, prompt string) (WebsitePick, 
 	}
 	if pick.Description == "" {
 		pick.Description = page.Description
+	}
+	if pick.Favicon == "" {
+		pick.Favicon = page.Favicon
 	}
 	if pick.Title == "" {
 		pick.Title = keyword

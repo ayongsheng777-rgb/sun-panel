@@ -173,3 +173,114 @@ func AddWebsite(ctx context.Context, cfg AIConfig, prompt string) (WebsitePick, 
 
 	return pick, results, nil
 }
+
+// GithubPick GitHub 检索选中的仓库
+type GithubPick struct {
+	FullName    string `json:"fullName"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Homepage    string `json:"homepage"`
+	HTMLURL     string `json:"htmlUrl"`
+	Category    string `json:"category"`
+	Language    string `json:"language"`
+}
+
+// AddGithubRepo 编排「GitHub 智能检索」：搜索仓库 → LLM 选最佳仓库+分类。
+func AddGithubRepo(ctx context.Context, cfg AIConfig, prompt string) (GithubPick, []web.GithubRepo, error) {
+	repos, err := web.SearchGithub(prompt, 6)
+	if err != nil {
+		return GithubPick{}, nil, err
+	}
+	if len(repos) == 0 {
+		return GithubPick{}, nil, errors.New("github 未检索到相关仓库")
+	}
+
+	pc := cfg.Providers[string(cfg.DefaultProvider)]
+	adapter := ProviderManager{}.GetAdapter(pc)
+	if pc.APIKey == "" {
+		// 即使没有 AI，也允许直接取第一个仓库
+		r := repos[0]
+		return GithubPick{
+			FullName: r.FullName, Title: r.Name, Description: r.Description,
+			Homepage: pickHomepage(r), HTMLURL: r.HTMLURL, Category: CategoryDevTools, Language: r.Language,
+		}, repos, nil
+	}
+
+	systemPrompt := "你是导航站的智能助手。用户想添加一款 GitHub 开源项目到导航站。" +
+		"请从候选仓库中选出最贴切的一个，并判断它应归入哪个分类。" +
+		"只输出 JSON（不要任何解释）：{\"fullName\": \"仓库全名\", \"title\": \"展示名\", \"category\": \"" +
+		strings.Join(validCategoryList(), "/") + "\", \"language\": \"主要语言\"}"
+	var sb strings.Builder
+	sb.WriteString("候选仓库（按星标排序）：\n")
+	for i, r := range repos {
+		sb.WriteString(fmt.Sprintf("%d. %s - %s (⭐%d, %s)\n", i+1, r.FullName, r.Description, r.Stars, r.Language))
+	}
+	sb.WriteString("\n用户意图：")
+	sb.WriteString(prompt)
+
+	raw, err := adapter.Chat(ctx, pc, []ChatMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: sb.String()},
+	}, true)
+	if err != nil {
+		r := repos[0]
+		return GithubPick{
+			FullName: r.FullName, Title: r.Name, Description: r.Description,
+			Homepage: pickHomepage(r), HTMLURL: r.HTMLURL, Category: CategoryDevTools, Language: r.Language,
+		}, repos, nil
+	}
+
+	pick, err := parseGithubPick(raw)
+	if err != nil {
+		r := repos[0]
+		return GithubPick{
+			FullName: r.FullName, Title: r.Name, Description: r.Description,
+			Homepage: pickHomepage(r), HTMLURL: r.HTMLURL, Category: CategoryDevTools, Language: r.Language,
+		}, repos, nil
+	}
+	// 回填仓库详情
+	for _, r := range repos {
+		if r.FullName == pick.FullName {
+			pick.Description = r.Description
+			pick.Homepage = pickHomepage(r)
+			pick.HTMLURL = r.HTMLURL
+			pick.Language = r.Language
+			break
+		}
+	}
+	if !ValidCategories[pick.Category] {
+		pick.Category = CategoryDevTools
+	}
+	return pick, repos, nil
+}
+
+func pickHomepage(r web.GithubRepo) string {
+	if r.Homepage != "" {
+		return r.Homepage
+	}
+	return r.HTMLURL
+}
+
+func parseGithubPick(raw string) (GithubPick, error) {
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start == -1 || end == -1 || end <= start {
+		return GithubPick{}, errors.New("invalid ai json response")
+	}
+	var pick GithubPick
+	if err := json.Unmarshal([]byte(raw[start:end+1]), &pick); err != nil {
+		return GithubPick{}, err
+	}
+	if pick.FullName == "" {
+		return GithubPick{}, errors.New("empty fullName")
+	}
+	return pick, nil
+}
+
+func validCategoryList() []string {
+	out := make([]string, 0, len(ValidCategories))
+	for k := range ValidCategories {
+		out = append(out, k)
+	}
+	return out
+}

@@ -15,3 +15,11 @@ export function addWebsite<T = AIAddWebsiteResult>(prompt: string) {
     data: { prompt },
   })
 }
+
+// GitHub 智能检索：搜索仓库 → AI 选最佳仓库 → 分类 → 添加导航入口
+export function githubSearch<T = AIAddWebsiteResult>(prompt: string) {
+  return post<T>({
+    url: '/panel/ai/github-search',
+    data: { prompt },
+  })
+}

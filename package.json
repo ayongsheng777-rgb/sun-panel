@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@traptitech/markdown-it-katex": "^3.6.0",
+    "@types/qrcode": "^1.5.6",
     "@vueuse/core": "^9.13.0",
     "highlight.js": "^11.7.0",
     "katex": "^0.16.4",
@@ -30,6 +31,7 @@
     "moment": "^2.29.4",
     "naive-ui": "^2.36.0",
     "pinia": "^2.0.33",
+    "qrcode": "^1.5.4",
     "vue": "^3.2.47",
     "vue-draggable-plus": "^0.2.6",
     "vue-i18n": "^9.2.2",

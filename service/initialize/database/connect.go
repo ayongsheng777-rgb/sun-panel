@@ -124,6 +124,7 @@ func CreateDatabase(driver string, db *gorm.DB) error {
 		&models.ItemIconGroup{},
 		&models.ModuleConfig{},
 		&models.AiOperationLog{},
+		&models.TrustedDevice{},
 	); err != nil {
 		return err
 	}

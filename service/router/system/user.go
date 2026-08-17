@@ -15,6 +15,15 @@ func InitUserRouter(router *gin.RouterGroup) {
 	r.POST("/user/updateInfo", api.UpdateInfo)
 	r.POST("/user/getReferralCode", api.GetReferralCode)
 
+	// OTP 双因素认证 + 设备管理（初版规格书第 9-13 章）
+	loginApi := api_v1.ApiGroupApp.ApiSystem.LoginApi
+	r.POST("/user/otp-status", loginApi.OtpStatus)
+	r.POST("/user/otp-setup", loginApi.OtpSetup)
+	r.POST("/user/otp-confirm", loginApi.OtpConfirm)
+	r.POST("/user/otp-disable", loginApi.OtpDisable)
+	r.GET("/user/devices", loginApi.DeviceList)
+	r.DELETE("/user/devices/:id", loginApi.DeviceDelete)
+
 	// 公开模式
 	rPublic := router.Group("", middleware.PublicModeInterceptor)
 	{

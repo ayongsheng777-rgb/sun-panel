@@ -128,6 +128,111 @@ func (a *AiManage) AddWebsite(c *gin.Context) {
 	})
 }
 
+// GithubSearch 智能检索 GitHub 仓库（初版规格书第 7 章）
+func (a *AiManage) GithubSearch(c *gin.Context) {
+	userInfo, _ := base.GetCurrentUserInfo(c)
+	var req struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		apiReturn.ErrorParamFomat(c, err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		apiReturn.ErrorParamFomat(c, "prompt is empty")
+		return
+	}
+
+	cfg := ai.LoadConfig(userInfo.ID)
+	if !cfg.Enabled {
+		apiReturn.Error(c, "AI 未启用，请先在设置中开启 AI 搜索")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 25*time.Second)
+	defer cancel()
+
+	pick, repos, err := ai.AddGithubRepo(ctx, cfg, req.Prompt)
+	if err != nil {
+		apiReturn.Error(c, "GitHub 检索失败："+err.Error())
+		return
+	}
+
+	// 找到或创建分类分组
+	groupId, err := ensureGroup(userInfo.ID, pick.Category)
+	if err != nil {
+		apiReturn.ErrorDatabase(c, err.Error())
+		return
+	}
+
+	target := pick.Homepage
+	if target == "" {
+		target = pick.HTMLURL
+	}
+	addrType := "https"
+	if strings.HasPrefix(strings.ToLower(target), "http://") {
+		addrType = "http"
+	}
+	icon := datatype.ItemIconIconInfo{ItemType: 1, Text: firstRune(pick.Title)}
+	item := models.ItemIcon{
+		Title:           pick.Title,
+		Url:             target,
+		Description:     pick.Description,
+		OpenMethod:      2,
+		Sort:            9999,
+		ItemIconGroupId: groupId,
+		UserId:          userInfo.ID,
+		Icon:            icon,
+		Addresses: []datatype.ItemAddress{{
+			Id:         uuid.New().String(),
+			Name:       "默认",
+			Url:        target,
+			Type:       addrType,
+			IsDefault:  true,
+			Sort:       0,
+			Enabled:    true,
+			OpenMethod: 2,
+		}},
+	}
+	if j, err := json.Marshal(item.Icon); err == nil {
+		item.IconJson = string(j)
+	}
+	if j, err := json.Marshal(item.Addresses); err == nil {
+		item.AddressesJson = string(j)
+	}
+	if err := global.Db.Create(&item).Error; err != nil {
+		apiReturn.ErrorDatabase(c, err.Error())
+		return
+	}
+
+	_ = global.Db.Create(&models.AiOperationLog{
+		UserId:   userInfo.ID,
+		Operator: "AI",
+		Action:   "add",
+		Target:   "新增 GitHub 项目 " + pick.Title,
+		AfterData: mustJSON(map[string]interface{}{
+			"id": item.ID, "title": item.Title, "url": target,
+			"repo": pick.FullName, "groupId": groupId, "category": pick.Category,
+		}),
+	}).Error
+
+	_ = json.Unmarshal([]byte(item.IconJson), &item.Icon)
+	_ = json.Unmarshal([]byte(item.AddressesJson), &item.Addresses)
+
+	apiReturn.SuccessData(c, gin.H{
+		"item":    item,
+		"category": pick.Category,
+		"groupId": groupId,
+		"repo":    pick.FullName,
+		"repos":   repos,
+	})
+}
+
+func mustJSON(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
 // ensureGroup 按分类名查找分组，不存在则自动创建
 func ensureGroup(userId uint, category string) (int, error) {
 	group := models.ItemIconGroup{}

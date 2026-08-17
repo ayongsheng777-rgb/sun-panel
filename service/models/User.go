@@ -17,6 +17,10 @@ type User struct {
 	ReferralCode string `gorm:"type:varchar(10)" json:"referralCode"`                                                               // 推荐码
 	Token        string `gorm:"type:varchar(32)" json:"token"`
 
+	// OTP 双因素认证（初版规格书第 9-11 章）：强制所有账号开启
+	OtpEnabled bool   `gorm:"type:tinyint(1);default:0" json:"otpEnabled"` // 是否已绑定 OTP
+	OtpSecret  string `gorm:"type:varchar(64)" json:"-"`                   // TOTP 密钥（不外露 JSON）
+
 	UserId uint `gorm:"-"  json:"userId"`
 }
 
@@ -100,6 +104,12 @@ func (m *User) UpdateUserInfoByUserId(user_id uint, updateInfo map[string]interf
 	}
 	if v, ok := updateInfo["password"]; ok {
 		data["password"] = v
+	}
+	if v, ok := updateInfo["otp_enabled"]; ok {
+		data["otp_enabled"] = v
+	}
+	if v, ok := updateInfo["otp_secret"]; ok {
+		data["otp_secret"] = v
 	}
 
 	err := Db.Model(&mUser).Where("id=?", user_id).Updates(data).Error

@@ -11,6 +11,7 @@ func InitLogin(router *gin.RouterGroup) {
 	loginApi := api_v1.ApiGroupApp.ApiSystem.LoginApi
 
 	router.POST("/login", loginApi.Login)
+	router.POST("/login/otp-bind", loginApi.OtpBind)
 	router.POST("/logout", middleware.LoginInterceptor, loginApi.Logout)
 
 }

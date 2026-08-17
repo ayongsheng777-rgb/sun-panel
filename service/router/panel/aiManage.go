@@ -13,5 +13,6 @@ func InitAiManage(router *gin.RouterGroup) {
 	r := router.Group("", middleware.LoginInterceptor)
 	{
 		r.POST("/panel/ai/add-website", aiManage.AddWebsite)
+		r.POST("/panel/ai/github-search", aiManage.GithubSearch)
 	}
 }

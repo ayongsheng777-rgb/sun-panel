@@ -7,7 +7,7 @@ import { adminUserList, updateAiPermission } from '@/api/admin'
 import { useAuthStore } from '@/store'
 import { t } from '@/locales'
 
-const props = withDefaults(defineProps<{ visible?: boolean }>(), { visible: false })
+withDefaults(defineProps<{ visible?: boolean }>(), { visible: false })
 const emit = defineEmits<{ (e: 'update:visible', visible: boolean): void }>()
 
 const ms = useMessage()

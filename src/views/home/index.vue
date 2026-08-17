@@ -2,7 +2,7 @@
 import { VueDraggable } from 'vue-draggable-plus'
 import { type DropdownOption, NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
 import { nextTick, onMounted, ref } from 'vue'
-import { AISearchConfig, AIAssistant, AdminPanel, AppIcon, AppStarter, EditItem, SecuritySetting } from './components'
+import { AIAssistant, AdminPanel, AppIcon, AppStarter, EditItem } from './components'
 import { Clock, SearchBox, SystemMonitor } from '@/components/deskModule'
 import { SvgIcon } from '@/components/common'
 import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
@@ -46,8 +46,6 @@ const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 
 const settingModalShow = ref(false)
-const aiConfigShow = ref(false)
-const securityShow = ref(false)
 const aiAssistantShow = ref(false)
 const adminPanelShow = ref(false)
 

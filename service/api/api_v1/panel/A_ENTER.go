@@ -7,4 +7,5 @@ type ApiPanel struct {
 	ItemIconGroup ItemIconGroup
 	Search        Search
 	AiManage      AiManage
+	AiAgent       AiAgent
 }

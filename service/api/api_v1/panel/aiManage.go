@@ -44,7 +44,7 @@ func (a *AiManage) AddWebsite(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 150*time.Second)
 	defer cancel()
 
 	pick, results, err := ai.AddWebsite(ctx, cfg, req.Prompt)
@@ -149,7 +149,7 @@ func (a *AiManage) GithubSearch(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 25*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 150*time.Second)
 	defer cancel()
 
 	pick, repos, err := ai.AddGithubRepo(ctx, cfg, req.Prompt)

@@ -7,7 +7,7 @@ import { Clock, SearchBox, SystemMonitor } from '@/components/deskModule'
 import { SvgIcon } from '@/components/common'
 import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
 import { getList as getGroupList } from '@/api/panel/itemIconGroup'
-import { type AISearchResult, aiSearch } from '@/api/panel/aiSearch'
+import { type AIAgentResult, aiAgent } from '@/api/panel/aiAgent'
 import { type AIAddWebsiteResult, addWebsite, githubSearch } from '@/api/panel/aiManage'
 import { getDefaultAddress } from '@/utils/address'
 
@@ -88,9 +88,10 @@ const aiSearchError = ref<string | null>(null)
 const aiSearchMeta = ref<{ provider: string; model: string; latencyMs: number; fallback: boolean }>(
   { provider: '', model: '', latencyMs: 0, fallback: false },
 )
-const aiSearchCache = new Map<string, Panel.ItemInfo[]>()
 // AI 操作指令（添加网址 / GitHub 检索）的结果，展示在搜索框下方弹性面板
 const aiActionResult = ref<AIAddWebsiteResult | null>(null)
+// AI 操作代理的对话回复（搜索说明 / 管理操作结果 / 纯对话）
+const aiAgentReply = ref('')
 
 function openPage(openMethod: number, url: string, title?: string) {
   switch (openMethod) {
@@ -238,7 +239,6 @@ function onClickoutside() {
 }
 
 function handleEditSuccess(_item: Panel.ItemInfo) {
-  aiSearchCache.clear()
   getList()
 }
 
@@ -368,7 +368,7 @@ function itemFrontEndSearch(keyword?: string) {
   }
 }
 
-// AI 智能搜索：回车/点击 AI 时触发，自动降级普通搜索；支持「添加xx」「GitHub xx」操作指令
+// AI 智能搜索：回车/点击 AI 时触发，自动降级普通搜索；支持「添加xx」「GitHub xx」操作指令；其余交给 AI 操作代理
 async function onAiSearch(keyword?: string) {
   const kw = (keyword ?? '').trim()
   searchKeyword.value = kw
@@ -378,6 +378,7 @@ async function onAiSearch(keyword?: string) {
   }
   searchMode.value = 'ai'
   aiActionResult.value = null
+  aiAgentReply.value = ''
 
   // 操作类指令：添加网址 / GitHub 检索（走 AI 助手同款接口，结果在下方弹性面板展示）
   const isGithubAction = /github/i.test(kw)
@@ -405,32 +406,22 @@ async function onAiSearch(keyword?: string) {
     return
   }
 
-  // 命中缓存
-  const cacheKey = kw
-  const cached = aiSearchCache.get(cacheKey)
-  if (cached) {
-    aiSearchResults.value = cached
-    aiSearchError.value = null
-    return
-  }
-
+  // 其余全部交给 AI 操作代理：搜索全部内容 / 新建·改名分组 / 分组·网址排序 / 移动网址 / 修改网址 / 对话（禁止删除）
   aiSearchLoading.value = true
   aiSearchError.value = null
   try {
-    const { code, data } = await aiSearch<AISearchResult>({ query: kw, mode: 'ai', limit: 12 })
+    const { code, data, msg } = await aiAgent<AIAgentResult>(kw)
     if (code === 0 && data) {
-      aiSearchResults.value = data.results ?? []
-      aiSearchMeta.value = {
-        provider: data.provider ?? '',
-        model: data.model ?? '',
-        latencyMs: 0,
-        fallback: data.fallback ?? false,
+      aiAgentReply.value = data.reply || ''
+      aiSearchResults.value = data.kind === 'items' ? (data.items ?? []) : []
+      aiSearchMeta.value = { provider: '', model: '', latencyMs: 0, fallback: false }
+      if (data.changed) {
+        ms.success(data.reply || '操作完成')
+        getList()
       }
-      if (!data.fallback)
-        aiSearchCache.set(cacheKey, aiSearchResults.value)
     }
     else {
-      aiSearchError.value = t('panelHome.aiSearchUnavailable')
+      aiSearchError.value = msg || t('panelHome.aiSearchUnavailable')
     }
   }
   catch (e) {
@@ -448,6 +439,7 @@ function clearSearch() {
   aiSearchResults.value = []
   aiSearchError.value = null
   aiActionResult.value = null
+  aiAgentReply.value = ''
   filterItems.value = items.value
 }
 
@@ -570,23 +562,29 @@ function handleAddItem(itemIconGroupId?: number) {
                   已添加到「{{ aiActionResult.category }}」分组，首页已同步更新。
                 </div>
               </div>
-              <div v-else-if="aiSearchResults.length === 0" class="text-sm opacity-70">
+              <div v-else-if="aiSearchResults.length === 0 && !aiAgentReply" class="text-sm opacity-70">
                 {{ t('panelHome.aiSearchEmpty') }}
               </div>
-              <div v-else class="icon-info-box">
-                <div v-for="item in aiSearchResults" :key="item.id" @contextmenu="(e) => handleContextMenu(e, -1, item)">
-                  <AppIcon
-                    class="cursor-pointer"
-                    :item-info="item"
-                    :icon-text-color="panelState.panelConfig.iconTextColor"
-                    :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
-                    :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
-                    :style="0"
-                    @click="handleAiItemClick(item)"
-                    @address-click="(addr) => handleAddressClick(addr, item)"
-                  />
+              <template v-else>
+                <!-- AI 操作代理的对话回复（搜索说明 / 管理操作结果 / 纯对话） -->
+                <div v-if="aiAgentReply" class="text-sm whitespace-pre-wrap" :class="aiSearchResults.length ? 'mb-2 opacity-90' : ''">
+                  {{ aiAgentReply }}
                 </div>
-              </div>
+                <div v-if="aiSearchResults.length" class="icon-info-box">
+                  <div v-for="item in aiSearchResults" :key="item.id" @contextmenu="(e) => handleContextMenu(e, -1, item)">
+                    <AppIcon
+                      class="cursor-pointer"
+                      :item-info="item"
+                      :icon-text-color="panelState.panelConfig.iconTextColor"
+                      :icon-text-info-hide-description="panelState.panelConfig.iconTextInfoHideDescription || false"
+                      :icon-text-icon-hide-title="panelState.panelConfig.iconTextIconHideTitle || false"
+                      :style="0"
+                      @click="handleAiItemClick(item)"
+                      @address-click="(addr) => handleAddressClick(addr, item)"
+                    />
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </div>

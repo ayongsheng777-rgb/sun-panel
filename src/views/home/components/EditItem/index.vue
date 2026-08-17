@@ -130,10 +130,18 @@ const handleValidateButtonClick = (e: MouseEvent) => {
   })
 }
 
+// 生成地址唯一编号：优先用浏览器 crypto.randomUUID（仅 https/localhost 存在），
+// 普通 http 网页下该 API 缺失会抛错导致「添加地址」按钮点了没反应，故退回 时间戳+随机数 兜底。
+function genAddressId(): string {
+  return (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    ? crypto.randomUUID()
+    : `a-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 function addAddress() {
   const addresses = model.value.addresses ?? []
   addresses.push({
-    id: crypto.randomUUID(),
+    id: genAddressId(),
     name: '',
     url: '',
     type: 'https',

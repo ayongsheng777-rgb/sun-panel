@@ -46,3 +46,5 @@ service/database
 service/web
 service/uploads
 service/plugins
+# 本地误存的编译产物（Linux 二进制，不入仓库）
+service/sun-panel

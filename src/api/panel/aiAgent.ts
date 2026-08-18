@@ -8,7 +8,7 @@ export interface AIAgentResult {
   items?: Panel.ItemInfo[]
 }
 
-// 对话式 AI 操作代理：搜索全部内容 + 分组/网址管理（禁止删除）
+// 对话式 AI 操作代理：搜索全部内容 + 分组/网址管理（删除需暗号「泳昇」放行）
 export function aiAgent<T = AIAgentResult>(prompt: string) {
   return post<T>({
     url: '/panel/ai/agent',

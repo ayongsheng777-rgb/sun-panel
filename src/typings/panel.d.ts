@@ -142,5 +142,13 @@ declare namespace Panel {
         error?: string
         testedAt: string
     }
+
+    // 自动优选模型结果（/panel/ai/auto-best）
+    interface AIAutoBestResult {
+        provider: string
+        model: string
+        latencyMs: number
+        tested: AIModelTestResult[]
+    }
 }
 

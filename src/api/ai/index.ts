@@ -65,3 +65,8 @@ export function listAIModels<T = { provider: string; models: Panel.AIModel[] }>(
 export function testAIModels<T = { results: Panel.AIModelTestResult[] }>() {
   return post<T>({ url: '/panel/ai/test', data: {} })
 }
+
+// 自动检测某服务商可用且最优的模型并启用（后端自动保存）
+export function autoBestModel<T = Panel.AIAutoBestResult>(provider: string) {
+  return post<T>({ url: '/panel/ai/auto-best', data: { provider } })
+}

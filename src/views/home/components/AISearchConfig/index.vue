@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NCard, NDivider, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, NSpin, NSwitch, NTag, useMessage } from 'naive-ui'
-import { getAIConfig, listAIModels, saveAIConfig, testAIModels } from '@/api/ai'
+import { autoBestModel, getAIConfig, listAIModels, saveAIConfig, testAIModels } from '@/api/ai'
 import { t } from '@/locales'
 
 const props = withDefaults(defineProps<{ visible?: boolean; embedded?: boolean }>(), {
@@ -16,6 +16,9 @@ const saving = ref(false)
 const testing = ref(false)
 const modelLists = reactive<Record<string, Panel.AIModel[]>>({})
 const testResults = ref<Panel.AIModelTestResult[]>([])
+// 自动优选：每个 provider 的加载态与实测明细
+const autoBestLoading = reactive<Record<string, boolean>>({})
+const autoBestTested = reactive<Record<string, Panel.AIModelTestResult[]>>({})
 
 // 加载到的原始 key（用于「留空保留原值」）
 const originalKeys = reactive<Record<string, string>>({})
@@ -192,6 +195,36 @@ async function handleTest() {
   }
 }
 
+async function handleAutoBest(provider: Panel.AIProviderConfig['provider']) {
+  // 后端用的是「已保存」的 key：key 刚填还没保存时先提示保存
+  if (!(originalKeys[provider] || '').trim()) {
+    ms.warning('请先点「保存」把 API Key 存到后端，再来自动检测')
+    return
+  }
+  autoBestLoading[provider] = true
+  delete autoBestTested[provider]
+  try {
+    const { code, msg, data } = await autoBestModel<Panel.AIAutoBestResult>(provider)
+    if (data?.tested?.length)
+      autoBestTested[provider] = data.tested
+    if (code === 0 && data?.model) {
+      // 后端已自动保存：同步回填表单（模型名 + 启用开关）
+      form.providers[provider].model = data.model
+      form.providers[provider].enabled = true
+      ms.success(`已自动启用最优模型：${data.model}（${data.latencyMs}ms）`)
+    }
+    else {
+      ms.error(msg || '自动检测失败')
+    }
+  }
+  catch {
+    ms.error('自动检测失败（网络错误）')
+  }
+  finally {
+    autoBestLoading[provider] = false
+  }
+}
+
 const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.apiKey || originalKeys[p] || '').trim() !== ''))
 </script>
 
@@ -265,11 +298,26 @@ const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.api
               <NButton size="small" @click="handleListModels(p)">
                 {{ t('aiSearch.listModels') }}
               </NButton>
+              <NButton
+                v-if="p === 'nvidia'" size="small" type="primary" secondary
+                :loading="autoBestLoading[p]" @click="handleAutoBest(p)"
+              >
+                ⚡ 自动检测最优模型
+              </NButton>
               <div v-if="modelLists[p] && modelLists[p].length" class="flex flex-wrap gap-1">
                 <NTag v-for="m in modelLists[p]" :key="m.id" size="small" type="success" round>
                   {{ m.id }}
                 </NTag>
               </div>
+            </div>
+            <div v-if="autoBestTested[p]?.length" class="mt-2 flex flex-wrap gap-1">
+              <NTag
+                v-for="r in autoBestTested[p]" :key="r.model" size="small" round
+                :type="r.success ? (r.model === form.providers[p].model ? 'success' : 'info') : 'error'"
+                :title="r.error || ''"
+              >
+                {{ r.model.split('/').pop() }} · {{ r.success ? `${r.latencyMs}ms` : '失败' }}
+              </NTag>
             </div>
           </NCard>
 
@@ -364,11 +412,26 @@ const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.api
             <NButton size="small" @click="handleListModels(p)">
               {{ t('aiSearch.listModels') }}
             </NButton>
+            <NButton
+              v-if="p === 'nvidia'" size="small" type="primary" secondary
+              :loading="autoBestLoading[p]" @click="handleAutoBest(p)"
+            >
+              ⚡ 自动检测最优模型
+            </NButton>
             <div v-if="modelLists[p] && modelLists[p].length" class="flex flex-wrap gap-1">
               <NTag v-for="m in modelLists[p]" :key="m.id" size="small" type="success" round>
                 {{ m.id }}
               </NTag>
             </div>
+          </div>
+          <div v-if="autoBestTested[p]?.length" class="mt-2 flex flex-wrap gap-1">
+            <NTag
+              v-for="r in autoBestTested[p]" :key="r.model" size="small" round
+              :type="r.success ? (r.model === form.providers[p].model ? 'success' : 'info') : 'error'"
+              :title="r.error || ''"
+            >
+              {{ r.model.split('/').pop() }} · {{ r.success ? `${r.latencyMs}ms` : '失败' }}
+            </NTag>
           </div>
         </NCard>
 

@@ -154,6 +154,35 @@ func (a *Search) ListModels(c *gin.Context) {
 	apiReturn.SuccessData(c, gin.H{"provider": provider, "models": modelsList})
 }
 
+// AutoBestModel 自动检测某服务商可用且最优的模型并启用（自动保存）
+func (a *Search) AutoBestModel(c *gin.Context) {
+	userInfo, _ := base.GetCurrentUserInfo(c)
+	var req struct {
+		Provider string `json:"provider"`
+	}
+	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		apiReturn.ErrorParamFomat(c, err.Error())
+		return
+	}
+	if req.Provider == "" {
+		apiReturn.ErrorParamFomat(c, "provider required")
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
+	defer cancel()
+	result, err := ai.AutoBestModel(ctx, userInfo.ID, ai.Provider(req.Provider))
+	if err != nil {
+		// 即使未选出最优，也带回实测明细便于前端展示失败原因
+		if len(result.Tested) > 0 {
+			apiReturn.ErrorCode(c, -1, err.Error(), result)
+			return
+		}
+		apiReturn.Error(c, err.Error())
+		return
+	}
+	apiReturn.SuccessData(c, result)
+}
+
 // TestModels 测速：对所有已配置的服务商模型进行可用性 + 延迟测试
 func (a *Search) TestModels(c *gin.Context) {
 	userInfo, _ := base.GetCurrentUserInfo(c)

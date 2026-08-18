@@ -17,5 +17,6 @@ func InitSearch(router *gin.RouterGroup) {
 		r.POST("/panel/ai/config", search.SaveAIConfig)
 		r.GET("/panel/ai/models", search.ListModels)
 		r.POST("/panel/ai/test", search.TestModels)
+		r.POST("/panel/ai/auto-best", search.AutoBestModel)
 	}
 }

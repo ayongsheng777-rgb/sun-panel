@@ -13,11 +13,10 @@ import (
 
 // Engine AI 执行引擎：意图路由 → 工具选择 → 权限校验 → 执行 → 结果汇总。
 //
-// 删除隔离的四层防线：
-//  1. Prompt 层：系统提示词明确禁止删除；
-//  2. 注册表层：注册表里根本没有删除类工具，且 Register 拒绝 delete 权限；
-//  3. 权限层：Registry.Execute 执行前再次 ValidateToolPermission；
-//  4. 业务层：DeleteGuard 关键词兜底，命中直接拒绝，不进入工具链。
+// 删除隔离的三层防线（删除需暗号「泳昇」放行）：
+//  1. 提示词层：路由提示词声明删除必须带暗号，否则直接回复「是不是删除网址\分组？」；
+//  2. 业务层：DeleteGuard 关键词兜底，命中删除词且无暗号即拒绝，不进入工具链；
+//  3. 工具层：panel.delete_item / panel.delete_group 实际执行删除（带暗号才被路由选中）。
 type Engine struct {
 	cfg      AIConfig
 	registry *tools.Registry
@@ -39,6 +38,7 @@ func buildBaseTools() []tools.Tool {
 	out = append(out, tools.OrganizeTools()...)
 	out = append(out, tools.BatchTools()...)
 	out = append(out, tools.OverviewTools()...)
+	out = append(out, tools.DeleteTools()...)
 	return out
 }
 
@@ -202,8 +202,9 @@ func (e *Engine) route(ctx context.Context, userId uint, prompt string) (Intent,
 意图（intent）取值：chat / local_search / web_search / realtime / panel_action / settings_action / organize
 
 严格规则：
-1. 【禁止删除】任何删除分组、删除网址、清空数据的请求都必须拒绝：tool 留空，intent 用 chat，
-   reply 说明「删除操作不支持由 AI 执行，请在页面上手动删除」。除删除以外的分组操作（新建/改名/改图标/改描述/排序/移动）都允许。
+1. 【删除需暗号】删除分组/网址/清空数据只有在用户指令包含暗号「泳昇」时才允许调用 panel.delete_item / panel.delete_group；
+   若用户要求删除但未带暗号，tool 留空、intent 用 chat，reply 写「是不是删除网址\分组？」（不要说明暗号是什么）。
+   除删除以外的分组操作（新建/改名/改图标/改描述/排序/移动）都允许。
 2. 分组名、网址名必须从「当前面板数据」里匹配（可模糊，如「常用」匹配「常用工具」）。
 3. 问面板里有什么、找某个网址 → panel.search；问天气/时间 → realtime.*；问外部资讯/资料 → web.search。
 4. 排序类工具必须给出重排后的完整顺序列表。

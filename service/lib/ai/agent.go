@@ -128,7 +128,7 @@ func AgentExecute(ctx context.Context, cfg AIConfig, userId uint, prompt string)
 		if strings.TrimSpace(p.Query) == "" {
 			p.Query = prompt
 		}
-		ids, serr := AISearch(ctx, cfg, items, p.Query)
+		ids, serr := AISearch(ctx, cfg, items, []models.ItemIconGroup{}, p.Query)
 		if serr != nil {
 			// AI 排序失败降级本地过滤
 			ids = []uint{}

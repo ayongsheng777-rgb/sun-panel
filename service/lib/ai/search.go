@@ -38,8 +38,13 @@ type candidateInput struct {
 }
 
 // CandidateRecall 本地加权候选召回（第一阶段）
-func CandidateRecall(items []models.ItemIcon, query string) []SearchDocument {
+func CandidateRecall(items []models.ItemIcon, groups []models.ItemIconGroup, query string) []SearchDocument {
 	q := strings.ToLower(strings.TrimSpace(query))
+	// 建 groupId -> 分组名 映射，回填每个项目的所属分组（修复 AI 搜索不说分组名的问题）
+	groupTitle := make(map[uint]string, len(groups))
+	for _, g := range groups {
+		groupTitle[g.ID] = g.Title
+	}
 	docs := make([]SearchDocument, 0, len(items))
 	for _, it := range items {
 		score := 0.0
@@ -75,7 +80,7 @@ func CandidateRecall(items []models.ItemIcon, query string) []SearchDocument {
 				Title:       it.Title,
 				Description: it.Description,
 				URL:         it.Url,
-				GroupTitle:  "",
+				GroupTitle:  groupTitle[uint(it.ItemIconGroupId)],
 				Addresses:   it.Addresses,
 				Score:       score,
 			})
@@ -89,8 +94,8 @@ func CandidateRecall(items []models.ItemIcon, query string) []SearchDocument {
 }
 
 // AISearch 第二阶段：AI 重新排序，只返回候选项中的 itemId（防止 URL 幻觉）
-func AISearch(ctx context.Context, cfg AIConfig, items []models.ItemIcon, query string) ([]uint, error) {
-	candidates := CandidateRecall(items, query)
+func AISearch(ctx context.Context, cfg AIConfig, items []models.ItemIcon, groups []models.ItemIconGroup, query string) ([]uint, error) {
+	candidates := CandidateRecall(items, groups, query)
 	if len(candidates) == 0 {
 		return []uint{}, nil
 	}

@@ -76,7 +76,10 @@ func (a *Search) Search(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
-	ids, err := ai.AISearch(ctx, cfg, itemIcons, req.Query)
+	groups := []models.ItemIconGroup{}
+	_ = global.Db.Order("sort,created_at").Where("user_id=?", userInfo.ID).Find(&groups).Error
+
+	ids, err := ai.AISearch(ctx, cfg, itemIcons, groups, req.Query)
 	if err != nil {
 		result := ai.LocalFilter(itemIcons, req.Query, req.Limit)
 		apiReturn.SuccessData(c, gin.H{

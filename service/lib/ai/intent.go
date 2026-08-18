@@ -34,8 +34,12 @@ var deleteVerbs = []string{
 	"delete", "remove", "drop ",
 }
 
+// secretCode 删除操作暗号：用户指令含此串才放行 AI 删除（防误删）
+const secretCode = "泳昇"
+
 // DeleteGuard 判断这条指令是否在要求删除。
-// 命中即由引擎直接拒绝，永不进入工具执行链。
+// 命中删除词但没暗号 → 直接回复确认「是不是删除网址\分组？」，不询问暗号是什么；
+// 命中删除词且含暗号「泳昇」 → 放行，进入工具执行链（由 panel.delete_item / panel.delete_group 实际执行）。
 func DeleteGuard(prompt string) (bool, string) {
 	low := strings.ToLower(prompt)
 	hit := false
@@ -48,13 +52,12 @@ func DeleteGuard(prompt string) (bool, string) {
 	if !hit {
 		return false, ""
 	}
-	// 重复项相关的「删除」引导到合并流程，避免用户无路可走
-	if strings.Contains(prompt, "重复") {
-		return true, "删除操作不支持由 AI 执行。不过我可以帮你「合并重复项」——把多余地址并进主项目、重复条目挪到「" +
-			"待清理（重复）」分组，你确认后手动删除即可。要执行吗？"
+	// 暗号验证：包含暗号则放行删除
+	if strings.Contains(prompt, secretCode) {
+		return false, ""
 	}
-	return true, "删除操作已被系统永久禁用，AI 不能删除任何分组或网址，请在页面上手动删除。\n" +
-		"除删除以外的分组操作我都能做：新建、改名、改图标/描述、调整顺序、移动网址、批量整理。"
+	// 不含暗号：直接回复确认，不询问暗号是什么
+	return true, "是不是删除网址\\分组？"
 }
 
 // parseIntent 容错解析 LLM 的路由输出
@@ -94,6 +97,8 @@ func intentOfTool(tool string) IntentType {
 	case tool == "panel.organize_plan", tool == "panel.apply_organize",
 		tool == "panel.analyze_duplicates", tool == "panel.merge_duplicates":
 		return IntentOrganize
+	case tool == "panel.delete_item", tool == "panel.delete_group":
+		return IntentPanelAction
 	default:
 		return IntentPanelAction
 	}

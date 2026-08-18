@@ -86,7 +86,7 @@ function handleDelete(groupInfo: Panel.ItemIconGroup) {
       if (groupInfo.id) {
         deletes([groupInfo.id]).then(({ code, msg }) => {
           if (code !== 0)
-            ms.error(t('common.deleteFail'))
+            ms.error(`${t('common.deleteFail')}: ${msg || '未知错误'}`)
           else
             refreshList()
         })

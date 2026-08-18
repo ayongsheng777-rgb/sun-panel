@@ -103,7 +103,7 @@ func (a *ItemIconGroup) Deletes(c *gin.Context) {
 		return
 	} else {
 		if math.Abs(float64(len(req.Ids))-float64(count)) < 1 {
-			apiReturn.ErrorCode(c, 1201, "At least one must be retained", nil)
+			apiReturn.ErrorCode(c, 1201, "至少保留一个分组", nil)
 			return
 		}
 

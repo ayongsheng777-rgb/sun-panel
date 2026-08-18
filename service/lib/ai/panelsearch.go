@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"sun-panel/lib/ai/tools"
+	"sun-panel/models"
 )
 
 // panelSearchTool 面板内网址检索工具（panel.search）。
@@ -46,11 +47,15 @@ func (t panelSearchTool) Execute(ec *tools.ExecContext) (tools.Result, error) {
 	if err != nil {
 		return tools.Result{}, err
 	}
+	groups, err := tools.LoadGroups(ec.UserId)
+	if err != nil {
+		return tools.Result{}, err
+	}
 	if len(items) == 0 {
 		return tools.Result{Kind: "reply", Reply: "你的面板里还没有网址。"}, nil
 	}
 
-	ids, serr := AISearch(ec.Ctx, t.cfg, items, query)
+	ids, serr := AISearch(ec.Ctx, t.cfg, items, groups, query)
 	if serr != nil || len(ids) == 0 {
 		// AI 排序失败或没命中：降级本地关键词过滤
 		ids = ids[:0]
@@ -64,9 +69,32 @@ func (t panelSearchTool) Execute(ec *tools.ExecContext) (tools.Result, error) {
 			Reply: "面板里没找到和「" + query + "」相关的网址。要我联网帮你找并添加进来吗？",
 		}, nil
 	}
+
+	// 拼接带分组名的明细，让用户知道每个项目在哪个分组下
+	groupTitle := make(map[uint]string, len(groups))
+	for _, g := range groups {
+		groupTitle[g.ID] = g.Title
+	}
+	itemById := make(map[uint]models.ItemIcon, len(items))
+	for _, it := range items {
+		itemById[it.ID] = it
+	}
+	lines := make([]string, 0, len(ids))
+	for _, id := range ids {
+		it, ok := itemById[id]
+		if !ok {
+			continue
+		}
+		gt := groupTitle[uint(it.ItemIconGroupId)]
+		if gt == "" {
+			gt = "未分组"
+		}
+		lines = append(lines, fmt.Sprintf("• %s（在「%s」分组）", it.Title, gt))
+	}
+	reply := fmt.Sprintf("为你找到 %d 个相关内容：\n%s", len(ids), strings.Join(lines, "\n"))
 	return tools.Result{
 		Kind:    "items",
-		Reply:   fmt.Sprintf("为你找到 %d 个相关内容", len(ids)),
+		Reply:   reply,
 		ItemIds: ids,
 	}, nil
 }

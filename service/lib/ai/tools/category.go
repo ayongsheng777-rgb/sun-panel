@@ -2,24 +2,25 @@ package tools
 
 // 网址分类（规格书第 8 章）—— 全系统唯一来源，lib/ai 也引用此处常量
 const (
-	CategoryAITools  = "AI工具"
-	CategoryDevTools = "开发工具"
-	CategoryServer   = "服务器"
-	CategoryNAS      = "NAS"
-	CategoryFinance  = "金融"
-	CategoryNews     = "新闻"
-	CategoryMedia    = "影音"
-	CategoryOffice   = "办公"
-	CategoryLife     = "生活"
-	CategoryStudy    = "学习"
-	CategoryOther    = "其他"
+	CategoryAITools    = "AI工具"
+	CategoryDevTools   = "开发工具"
+	CategoryServer     = "服务器"
+	CategoryNAS        = "NAS"
+	CategoryFinance    = "金融"
+	CategoryNews       = "新闻"
+	CategoryMedia      = "影音"
+	CategoryOffice     = "办公"
+	CategoryLife       = "生活"
+	CategoryStudy      = "学习"
+	CategoryAppNav     = "APP导航"
+	CategoryOther      = "其他"
 )
 
 // orderedCategories 固定顺序（用于 Prompt 展示，避免 map 随机序导致模型输出漂移）
 var orderedCategories = []string{
 	CategoryAITools, CategoryDevTools, CategoryServer, CategoryNAS,
 	CategoryFinance, CategoryNews, CategoryMedia, CategoryOffice,
-	CategoryLife, CategoryStudy, CategoryOther,
+	CategoryLife, CategoryStudy, CategoryAppNav, CategoryOther,
 }
 
 // ValidCategories 分类白名单，AI 输出不在其中即归「其他」
@@ -50,6 +51,7 @@ var categoryIcon = map[string]string{
 	CategoryOffice:   "material-symbols:work-outline",
 	CategoryLife:     "material-symbols:coffee",
 	CategoryStudy:    "material-symbols:school-outline",
+	CategoryAppNav:   "material-symbols:apps",
 	CategoryOther:    "material-symbols:folder-outline",
 }
 

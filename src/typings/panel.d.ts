@@ -122,11 +122,13 @@ declare namespace Panel {
         temperature?: number
         maxTokens?: number
         extraHeaders?: Record<string, string>
+        thinking?: 'off' | 'low' | 'medium' | 'high' // 思考模式（推理模型生效）
     }
 
     interface AIConfig {
         enabled: boolean
         defaultProvider: 'openai' | 'deepseek' | 'nvidia' | 'gemini' | 'custom'
+        backupProvider?: 'openai' | 'deepseek' | 'nvidia' | 'gemini' | 'custom' | ''
         strategy: string
         providers: Record<string, AIProviderConfig>
     }

@@ -99,8 +99,9 @@ function http<T = any>(
 
   headers.token = authStore.token
   headers.lang = appStore.language
+  // GET 也必须带上 token/lang 头，否则后端 LoginInterceptor 读到空 token 会返回 1000（未登录）并触发前端跳转登录页
   return method === 'GET'
-    ? request.get(url, { params, signal, onDownloadProgress }).then(successHandler, failHandler)
+    ? request.get(url, { params, headers, signal, onDownloadProgress }).then(successHandler, failHandler)
     : request.post(url, params, { headers, signal, onDownloadProgress }).then(successHandler, failHandler)
 }
 

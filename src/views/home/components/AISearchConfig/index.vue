@@ -37,17 +37,29 @@ const providerOptions = PROVIDER_LIST.map(p => ({
 
 const defaultProviderOptions = providerOptions
 
+const backupProviderOptions = [
+  { label: '无（不启用备用）', value: '' },
+  ...providerOptions,
+]
+
+const thinkingOptions = [
+  { label: '关闭', value: 'off' },
+  { label: '低 (low)', value: 'low' },
+  { label: '中 (medium)', value: 'medium' },
+  { label: '高 (high)', value: 'high' },
+]
+
 function emptyConfig(): Panel.AIConfig {
   return {
     enabled: false,
     defaultProvider: 'deepseek',
     strategy: 'auto',
     providers: {
-      openai: { provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini', enabled: false, timeout: 8000 },
-      deepseek: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', enabled: true, timeout: 8000 },
-      nvidia: { provider: 'nvidia', baseUrl: 'https://integrate.api.nvidia.com/v1', apiKey: '', model: 'nvidia/llama-3.1-nemotron-70b-instruct', enabled: false, timeout: 8000 },
-      gemini: { provider: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: '', model: 'gemini-2.0-flash', enabled: false, timeout: 8000 },
-      custom: { provider: 'custom', baseUrl: '', apiKey: '', model: '', enabled: false, timeout: 8000 },
+      openai: { provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4o-mini', enabled: false, timeout: 8000, thinking: 'off' },
+      deepseek: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', enabled: true, timeout: 8000, thinking: 'off' },
+      nvidia: { provider: 'nvidia', baseUrl: 'https://integrate.api.nvidia.com/v1', apiKey: '', model: 'nvidia/llama-3.1-nemotron-70b-instruct', enabled: false, timeout: 8000, thinking: 'off' },
+      gemini: { provider: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', apiKey: '', model: 'gemini-2.0-flash', enabled: false, timeout: 8000, thinking: 'off' },
+      custom: { provider: 'custom', baseUrl: '', apiKey: '', model: '', enabled: false, timeout: 8000, thinking: 'off' },
     },
   }
 }
@@ -57,13 +69,14 @@ const form = reactive<Panel.AIConfig>(emptyConfig())
 function cloneInto(target: Panel.AIConfig, src: Panel.AIConfig) {
   target.enabled = src.enabled
   target.defaultProvider = src.defaultProvider
+  target.backupProvider = src.backupProvider || ''
   target.strategy = src.strategy || 'auto'
   target.providers = {}
   for (const p of PROVIDER_LIST) {
     const s = src.providers?.[p]
     target.providers[p] = s
       ? { ...s }
-      : { provider: p, baseUrl: '', apiKey: '', model: '', enabled: false, timeout: 8000 }
+      : { provider: p, baseUrl: '', apiKey: '', model: '', enabled: false, timeout: 8000, thinking: 'off' }
     originalKeys[p] = target.providers[p].apiKey || ''
   }
 }
@@ -111,6 +124,7 @@ async function handleSave() {
   const payload: Panel.AIConfig = {
     enabled: form.enabled,
     defaultProvider: form.defaultProvider,
+    backupProvider: form.backupProvider || '',
     strategy: form.strategy,
     providers: {},
   }
@@ -198,6 +212,14 @@ const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.api
             />
           </NFormItem>
 
+          <NFormItem label="备用服务商（主用失败自动切换）">
+            <NSelect
+              v-model:value="form.backupProvider" :options="backupProviderOptions"
+              style="max-width: 280px;"
+            />
+            <span class="ml-2 text-xs text-zinc-400">主用不可用时自动尝试备用</span>
+          </NFormItem>
+
           <NDivider />
 
           <NCard
@@ -230,6 +252,13 @@ const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.api
             <NFormItem :label="t('aiSearch.maxTokens')">
               <NInputNumber v-model:value="form.providers[p].maxTokens" :min="0" :step="100" style="width: 200px;" />
               <span class="ml-2 text-xs text-zinc-400">{{ t('aiSearch.maxTokensHint') }}</span>
+            </NFormItem>
+            <NFormItem label="思考模式 (thinking)">
+              <NSelect
+                v-model:value="form.providers[p].thinking" :options="thinkingOptions"
+                style="max-width: 200px;"
+              />
+              <span class="ml-2 text-xs text-zinc-400">推理模型生效（低/中/高）</span>
             </NFormItem>
 
             <div class="flex items-center gap-2">
@@ -290,6 +319,14 @@ const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.api
           />
         </NFormItem>
 
+        <NFormItem label="备用服务商（主用失败自动切换）">
+          <NSelect
+            v-model:value="form.backupProvider" :options="backupProviderOptions"
+            style="max-width: 280px;"
+          />
+          <span class="ml-2 text-xs text-zinc-400">主用不可用时自动尝试备用</span>
+        </NFormItem>
+
         <NDivider />
 
         <NCard
@@ -314,6 +351,13 @@ const hasAnyKey = computed(() => PROVIDER_LIST.some(p => (form.providers[p]?.api
           <NFormItem :label="t('aiSearch.timeout')">
             <NInputNumber v-model:value="form.providers[p].timeout" :min="1000" :step="1000" style="width: 200px;" />
             <span class="ml-2 text-xs text-zinc-400">ms</span>
+          </NFormItem>
+          <NFormItem label="思考模式 (thinking)">
+            <NSelect
+              v-model:value="form.providers[p].thinking" :options="thinkingOptions"
+              style="max-width: 200px;"
+            />
+            <span class="ml-2 text-xs text-zinc-400">推理模型生效（低/中/高）</span>
           </NFormItem>
 
           <div class="flex items-center gap-2">

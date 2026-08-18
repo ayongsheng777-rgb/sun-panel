@@ -27,7 +27,7 @@ const (
 // Default base url
 const (
 	DefaultOpenAIBaseURL   = "https://api.openai.com/v1"
-	DefaultDeepSeekBaseURL = "https://api.deepseek.com"
+	DefaultDeepSeekBaseURL = "https://api.deepseek.com/v1"
 	DefaultNvidiaBaseURL   = "https://integrate.api.nvidia.com/v1"
 	DefaultGeminiBaseURL   = "https://generativelanguage.googleapis.com/v1beta/openai" // Gemini 的 OpenAI 兼容端点
 )
@@ -70,13 +70,15 @@ type AIProviderConfig struct {
 	Temperature  float64           `json:"temperature,omitempty"`  // 模型支持时生效，<=0 用默认 0.2
 	MaxTokens    int               `json:"maxTokens,omitempty"`    // 模型支持时生效，<=0 用默认 800
 	ExtraHeaders map[string]string `json:"extraHeaders,omitempty"` // 额外请求头（按需）
+	Thinking     string            `json:"thinking,omitempty"`    // 思考模式：off | low | medium | high（推理模型生效）
 }
 
 // AIConfig 全局 AI 搜索配置（仅服务端保存）
 type AIConfig struct {
 	Enabled         bool                        `json:"enabled"`
 	DefaultProvider Provider                    `json:"defaultProvider"`
-	Strategy        string                      `json:"strategy"` // auto | manual
+	BackupProvider  Provider                    `json:"backupProvider,omitempty"` // 主用失败时的备用服务商
+	Strategy        string                      `json:"strategy"`                 // auto | manual
 	Providers       map[string]AIProviderConfig `json:"providers"`
 }
 
@@ -167,6 +169,25 @@ func (p OpenAICompatibleProvider) chatWithFormat(ctx context.Context, cfg AIProv
 		"messages":    messages,
 		"temperature": temp,
 		"max_tokens":  maxTokens,
+	}
+	if cfg.Thinking != "" && cfg.Thinking != "off" {
+		// 思考模式（推理模型生效）。各厂商约定不同，这里做兼容映射：
+		//   DeepSeek 官方：thinking.type ∈ {enabled, disabled, adaptive}
+		//   OpenAI o-series：reasoning_effort ∈ {low, medium, high}
+		switch cfg.Thinking {
+		case "low":
+			payload["thinking"] = map[string]any{"type": "disabled"}
+			payload["reasoning_effort"] = "low"
+		case "medium":
+			payload["thinking"] = map[string]any{"type": "enabled"}
+			payload["reasoning_effort"] = "medium"
+		case "high":
+			payload["thinking"] = map[string]any{"type": "adaptive"}
+			payload["reasoning_effort"] = "high"
+		default: // 其它值（如直接写 enabled/disabled/adaptive）原样下发
+			payload["thinking"] = map[string]any{"type": cfg.Thinking}
+			payload["reasoning_effort"] = cfg.Thinking
+		}
 	}
 	if wantJSON {
 		payload["response_format"] = map[string]any{"type": "json_object"}

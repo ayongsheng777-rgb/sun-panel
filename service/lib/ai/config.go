@@ -84,6 +84,9 @@ func LoadConfig(userId uint) AIConfig {
 		if s, ok := val["strategy"].(string); ok && s != "" {
 			cfg.Strategy = s
 		}
+		if s, ok := val["backupProvider"].(string); ok && s != "" {
+			cfg.BackupProvider = Provider(s)
+		}
 		if pm, ok := val["providers"].(map[string]interface{}); ok {
 			for k, v := range pm {
 				b, _ := json.Marshal(v)
@@ -123,6 +126,7 @@ func SaveConfig(userId uint, cfg AIConfig) error {
 	val := map[string]interface{}{
 		"enabled":         cfg.Enabled,
 		"defaultProvider": string(cfg.DefaultProvider),
+		"backupProvider":  string(cfg.BackupProvider),
 		"strategy":        cfg.Strategy,
 		"providers":       cfg.Providers,
 	}

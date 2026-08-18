@@ -51,11 +51,7 @@ func (addItemTool) Execute(ec *ExecContext) (Result, error) {
 	pick := sitePick{Category: CategoryOther}
 	if u := NormalizeURL(p.Url); u != "" && IsSafeHTTPURL(u) {
 		// 用户直接给了链接：跳过搜索
-		pick.URL = u
-		pick.Title = strings.TrimSpace(p.Title)
-		if keyword == "" {
-			keyword = hostOf(u)
-		}
+		return AddItemByURL(ec, u, p.Title, p.GroupTitle)
 	} else {
 		if keyword == "" {
 			return Result{Kind: "reply", Reply: "请告诉我要添加哪个网站（名称或网址）"}, nil
@@ -219,6 +215,82 @@ func (addGithubItemTool) Execute(ec *ExecContext) (Result, error) {
 
 // ===================== 共用逻辑 =====================
 
+// AddItemByURL 已知网址时的统一入库逻辑：可达性探测 → 抓标题/描述/图标 → 查重 → 定位分组 → 落库。
+// panel.add_item（直给链接）与批量收藏（一条消息多网址）共用此函数。
+func AddItemByURL(ec *ExecContext, rawURL, title, groupTitle string) (Result, error) {
+	pick := sitePick{Category: CategoryOther, URL: rawURL, Title: strings.TrimSpace(title)}
+	pick.URL = NormalizeURL(pick.URL)
+	if !IsSafeHTTPURL(pick.URL) {
+		return Result{Kind: "reply", Reply: "链接不合法，没有添加"}, nil
+	}
+	reachable := URLReachable(pick.URL, 6*time.Second)
+
+	// 抓页面信息补全标题/描述/图标
+	page := web.FetchPageInfo(pick.URL)
+	if strings.TrimSpace(title) != "" {
+		pick.Title = strings.TrimSpace(title)
+	}
+	if pick.Title == "" {
+		pick.Title = page.Title
+	}
+	if pick.Title == "" {
+		pick.Title = hostOf(pick.URL)
+	}
+	pick.Title = TruncateRunes(strings.TrimSpace(pick.Title), 30)
+	if pick.Description == "" {
+		pick.Description = page.Description
+	}
+	if pick.Description == "" {
+		pick.Description = pick.URL
+	}
+	pick.Description = TruncateRunes(pick.Description, 120)
+	if pick.Favicon == "" {
+		pick.Favicon = page.Favicon
+	}
+
+	// 查重：同 URL 或同名已存在则不重复添加
+	if dup, ok := findDuplicateItem(ec.UserId, pick.Title, pick.URL); ok {
+		return Result{Kind: "reply", Reply: fmt.Sprintf("面板里已经有「%s」了（%s），没有重复添加", dup.Title, dup.Url)}, nil
+	}
+
+	// 定位分组：指定优先；否则用搜索路径给的分类；还是空/「其他」则让 AI 参考现有分组再判一次
+	gt := strings.TrimSpace(groupTitle)
+	if gt == "" {
+		gt = pick.Category
+	}
+	if gt == "" || gt == CategoryOther {
+		if g := classifyNewItem(ec, pick); g != "" {
+			gt = g
+		}
+	}
+	if gt == "" {
+		gt = CategoryOther
+	}
+	group, err := FindGroupByName(ec.UserId, gt)
+	if err != nil {
+		group = models.ItemIconGroup{
+			Title: gt, UserId: ec.UserId, Sort: 9999, Icon: CategoryIcon(gt),
+		}
+		if cerr := global.Db.Create(&group).Error; cerr != nil {
+			return Result{}, cerr
+		}
+		LogOp(ec.UserId, "create_group", "为新网址自动新建分组 "+gt, "", JSONStr(map[string]any{"id": group.ID}))
+	}
+
+	item, err := createItem(ec.UserId, int(group.ID), pick)
+	if err != nil {
+		return Result{}, err
+	}
+	LogOp(ec.UserId, "add_item", "新增网址「"+item.Title+"」到分组「"+group.Title+"」", "",
+		JSONStr(map[string]any{"id": item.ID, "url": item.Url, "group": group.Title}))
+
+	reply := fmt.Sprintf("已添加「%s」到「%s」分组\n%s", item.Title, group.Title, item.Url)
+	if !reachable {
+		reply += "\n（提示：这个地址刚才没探测通，可能是网络问题或站点限制，建议你点开确认一下）"
+	}
+	return Result{Kind: "changed", Reply: reply, Changed: true}, nil
+}
+
 // classifyNewItem 直丢 URL 时的 AI 归类：参考「现有分组 + 固定分类」挑一个最合适的。
 // 返回值必定落在候选集合内（防模型乱造分组名）；LLM 不可用/失败返回 ""，调用方回落「其他」。
 func classifyNewItem(ec *ExecContext, pick sitePick) string {
@@ -268,7 +340,8 @@ func classifyNewItem(ec *ExecContext, pick sitePick) string {
 func createItem(userId uint, groupId int, pick sitePick) (models.ItemIcon, error) {
 	icon := datatype.ItemIconIconInfo{ItemType: 3, Text: "material-symbols:link"}
 	if strings.TrimSpace(pick.Favicon) != "" {
-		icon = datatype.ItemIconIconInfo{ItemType: 1, Src: pick.Favicon}
+		// 图标以图片方式展示（ItemType=2）；原代码误用 ItemType=1（文字头像）会导致图标显示不出来
+		icon = datatype.ItemIconIconInfo{ItemType: 2, Src: pick.Favicon}
 	}
 	addr := datatype.ItemAddress{
 		Id:         fmt.Sprintf("ai-%d", time.Now().UnixNano()),

@@ -12,12 +12,16 @@ import (
 
 // DeleteTools 删除类工具。
 //
-// 注意：删除权限 PermissionDelete 被注册表硬性拒绝，因此这里声明为 PermissionUpdate，
-// 真正的删除开关放在意图层（intent.DeleteGuard 暗号「泳昇」把关）。工具本身只负责执行。
+// 注意：删除权限 PermissionDelete 被注册表硬性拒绝（防御性兜底），因此这里声明为 PermissionUpdate，
+// 工具本身只负责执行。删除开关的防线：
+//   - 单个/精确匹配删除：直接执行；
+//   - 命中多个：由引擎列出清单让用户选择（panel.delete_item / panel.delete_group 不再自行挑一个静默删）；
+//   - 清空分组/全部：引擎先要求一句确认，确认后才调用 panel.wipe_all。
 func DeleteTools() []Tool {
 	return []Tool{
 		deleteItemTool{},
 		deleteGroupTool{},
+		wipeAllTool{},
 	}
 }
 
@@ -28,7 +32,7 @@ type deleteItemTool struct{}
 func (deleteItemTool) Name() string           { return "panel.delete_item" }
 func (deleteItemTool) Permission() Permission { return PermissionUpdate }
 func (deleteItemTool) Description() string {
-	return "删除一个网址（需用户在指令中带上暗号「泳昇」才被允许执行）"
+	return "删除一个网址（按名称/域名模糊匹配；命中多个时由引擎列出让用户选择；单个直接删除）"
 }
 func (deleteItemTool) ParamsSchema() map[string]string {
 	return map[string]string{"itemTitle": "要删除的网址名（可模糊匹配）"}
@@ -61,7 +65,7 @@ type deleteGroupTool struct{}
 func (deleteGroupTool) Name() string           { return "panel.delete_group" }
 func (deleteGroupTool) Permission() Permission { return PermissionUpdate }
 func (deleteGroupTool) Description() string {
-	return "删除一个分组（会同时删除分组下的所有网址；需用户在指令中带上暗号「泳昇」才被允许执行）"
+	return "删除一个分组（会同时删除其下所有网址）；引擎会在执行前先要求一句确认"
 }
 func (deleteGroupTool) ParamsSchema() map[string]string {
 	return map[string]string{"groupTitle": "要删除的分组名（可模糊匹配）"}
@@ -103,4 +107,45 @@ func (deleteGroupTool) Execute(ec *ExecContext) (Result, error) {
 	}
 	LogOp(ec.UserId, "delete_group", "AI删除分组「"+g.Title+"」", "", "")
 	return Result{Kind: "changed", Reply: fmt.Sprintf("已删除分组「%s」及其下所有网址", g.Title), Changed: true}, nil
+}
+
+// ===================== 全部清空（需确认） =====================
+
+type wipeAllTool struct{}
+
+func (wipeAllTool) Name() string           { return "panel.wipe_all" }
+func (wipeAllTool) Permission() Permission { return PermissionUpdate }
+func (wipeAllTool) Description() string {
+	return "清空全部网址（危险操作，仅当用户明确回复「确认清空全部」后才由引擎放行）"
+}
+func (wipeAllTool) ParamsSchema() map[string]string { return map[string]string{} }
+
+func (wipeAllTool) Execute(ec *ExecContext) (Result, error) {
+	// 删除全部网址
+	if err := global.Db.Delete(&models.ItemIcon{}, "user_id=?", ec.UserId).Error; err != nil {
+		return Result{}, err
+	}
+	// 分组保留一个，避免破坏「至少保留一个分组」的不变量
+	var groups []models.ItemIconGroup
+	if err := global.Db.Order("sort ,created_at").Where("user_id=?", ec.UserId).Find(&groups).Error; err != nil {
+		return Result{}, err
+	}
+	keep := ""
+	if len(groups) > 0 {
+		keep = groups[0].Title
+		delIDs := make([]uint, 0, len(groups)-1)
+		for _, g := range groups[1:] {
+			delIDs = append(delIDs, g.ID)
+		}
+		if len(delIDs) > 0 {
+			if err := global.Db.Delete(&models.ItemIconGroup{}, "id IN ? AND user_id=?", delIDs, ec.UserId).Error; err != nil {
+				return Result{}, err
+			}
+		}
+	}
+	LogOp(ec.UserId, "wipe_all", "AI清空全部网址", "", "")
+	if keep == "" {
+		return Result{Kind: "changed", Reply: "已清空全部网址。", Changed: true}, nil
+	}
+	return Result{Kind: "changed", Reply: fmt.Sprintf("已清空全部网址，仅保留一个空分组「%s」。", keep), Changed: true}, nil
 }

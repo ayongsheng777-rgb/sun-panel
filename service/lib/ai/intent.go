@@ -28,36 +28,33 @@ type Intent struct {
 	Reply  string          `json:"reply"`
 }
 
-// deleteVerbs 明确的删除动词（第 4 层防线：业务层关键词兜底）
-var deleteVerbs = []string{
-	"删除", "删掉", "删了", "删除掉", "移除", "清空", "清除", "干掉", "去掉",
-	"delete", "remove", "drop ",
+// wipeAllPatterns 「清空全部」类操作的特征串：命中且未确认时，要求一句确认后才放行。
+// 仅作防误删的最后一道提示，不做删除阻断式拦截；普通删除（单个/按名称）不受影响。
+var wipeAllPatterns = []string{
+	"清空全部", "清空所有", "清空一切",
+	"删除全部", "删除所有", "删除一切",
+	"移除全部", "移除所有",
+	"清空全部网址", "清空所有网址",
+	"删除全部网址", "删除所有网址",
+	"清空所有分组", "删除所有分组",
+	"清空整个面板", "清空导航", "清空面板",
 }
 
-// secretCode 删除操作暗号：用户指令含此串才放行 AI 删除（防误删）
-const secretCode = "泳昇"
-
-// DeleteGuard 判断这条指令是否在要求删除。
-// 命中删除词但没暗号 → 直接回复确认「是不是删除网址\分组？」，不询问暗号是什么；
-// 命中删除词且含暗号「泳昇」 → 放行，进入工具执行链（由 panel.delete_item / panel.delete_group 实际执行）。
+// DeleteGuard 仅对「清空全部」类危险操作做确认拦截：
+//   - 命中特征串但未带「确认/确定」→ 返回确认提示，不进入删除流程；
+//   - 已带确认词 → 放行，路由到 panel.wipe_all 执行。
+// 普通删除（单个/按名称/按分组）不走此拦截，由引擎编排直接执行或先问一句。
 func DeleteGuard(prompt string) (bool, string) {
 	low := strings.ToLower(prompt)
-	hit := false
-	for _, v := range deleteVerbs {
-		if strings.Contains(low, v) {
-			hit = true
-			break
+	for _, p := range wipeAllPatterns {
+		if strings.Contains(low, p) {
+			if strings.Contains(low, "确认") || strings.Contains(low, "确定") {
+				return false, ""
+			}
+			return true, "⚠️ 这将清空全部网址（不可恢复），确认请回复「确认清空全部」。"
 		}
 	}
-	if !hit {
-		return false, ""
-	}
-	// 暗号验证：包含暗号则放行删除
-	if strings.Contains(prompt, secretCode) {
-		return false, ""
-	}
-	// 不含暗号：直接回复确认，不询问暗号是什么
-	return true, "是不是删除网址\\分组？"
+	return false, ""
 }
 
 // parseIntent 容错解析 LLM 的路由输出

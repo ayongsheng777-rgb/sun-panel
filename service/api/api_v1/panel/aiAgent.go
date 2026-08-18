@@ -16,7 +16,7 @@ import (
 	"github.com/gin-gonic/gin/binding"
 )
 
-// AiAgent 对话式 AI 操作代理：搜索全部内容 + 分组/网址管理（删除需暗号「泳昇」放行）
+// AiAgent 对话式 AI 操作代理：搜索全部内容 + 分组/网址管理（删除安全由引擎编排把关）
 type AiAgent struct{}
 
 // Execute 统一对话入口：理解自然语言 → 执行白名单操作 → 返回结果

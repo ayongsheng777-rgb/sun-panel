@@ -3,6 +3,7 @@ package tools
 import (
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -85,4 +86,55 @@ func TruncateRunes(s string, max int) string {
 		return s
 	}
 	return string(r[:max]) + "…"
+}
+
+// ExtractURLs 从文本中提取所有网址：完整 http(s) 链接、裸域名、IPv4(可带端口)、局域网地址。
+// 模型只会挑一个网址，这里在代码层把一条消息里的多个网址全部捞出来，用于批量收藏。
+func ExtractURLs(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(raw string) {
+		u := NormalizeURL(strings.Trim(raw, "，。、）).,!?；;:：\"'“”' \t"))
+		if u != "" && IsSafeHTTPURL(u) {
+			if !seen[u] {
+				seen[u] = true
+				out = append(out, u)
+			}
+		}
+	}
+	// 1) 完整链接优先
+	fullRe := regexp.MustCompile(`https?://[^\s，。、；！!?？（）()【】\[\]"'“”'<>]+`)
+	for _, m := range fullRe.FindAllString(text, -1) {
+		add(m)
+	}
+	cleaned := fullRe.ReplaceAllString(text, " ")
+	// 2) 裸主机：域名 / IPv4[:port]（含局域网地址）
+	tokenRe := regexp.MustCompile(`[^\s，。、；！!?？（）()【】\[\]"'“”'<>]+`)
+	ipRe := regexp.MustCompile(`^(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?(?:/[^\s]*)?$`)
+	domainRe := regexp.MustCompile(`^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(?::\d+)?(?:/[^\s]*)?$`)
+	for _, t := range tokenRe.FindAllString(cleaned, -1) {
+		t = strings.Trim(t, "，。、）).,")
+		if ipRe.MatchString(t) || domainRe.MatchString(t) {
+			add(t)
+		}
+	}
+	return out
+}
+
+// WantsBulkAdd 判断一条消息是否意在批量收藏多个网址。
+// 触发条件：提取到 >=2 个网址，且（含收藏类意图词 / 几乎全是网址清单）。问句不自动加，避免误收藏。
+func WantsBulkAdd(prompt string, urls []string) bool {
+	if len(urls) < 2 {
+		return false
+	}
+	if strings.ContainsAny(prompt, "？?") {
+		return false
+	}
+	addKw := []string{"收藏", "添加", "保存", "加一下", "存", "这些", "以下", "网址", "链接", "导航", "面板", "都加", "全部加", "归", "整理", "加进"}
+	for _, k := range addKw {
+		if strings.Contains(prompt, k) {
+			return true
+		}
+	}
+	return len(urls) >= 3 // 一堆网址直接当清单
 }

@@ -37,6 +37,7 @@ func buildBaseTools() []tools.Tool {
 	out = append(out, tools.WebTools()...)
 	out = append(out, tools.SettingsTools()...)
 	out = append(out, tools.OrganizeTools()...)
+	out = append(out, tools.BatchTools()...)
 	out = append(out, tools.OverviewTools()...)
 	return out
 }
@@ -135,7 +136,7 @@ func (e *Engine) Execute(ctx context.Context, userId uint, prompt string) (Agent
 	if intent.Type == IntentChat || intent.Tool == "" {
 		reply := strings.TrimSpace(intent.Reply)
 		if reply == "" {
-			reply = "我没太理解。我可以：搜面板里的网址、联网查资料/天气时间、添加网址、管理分组（新建/改名/改图标/排序/移动）、整理重复项、改面板外观设置。"
+			reply = "我没太理解。我可以：搜面板里的网址、联网查资料/天气时间、收藏网址（直接丢链接给我）、管理分组（新建/改名/排序/移动）、内网地址归组、失效网址体检、全部网址重新归纳、整理重复项、改面板外观设置。"
 		}
 		return AgentResult{Kind: "reply", Reply: reply, Intent: string(IntentChat)}, nil
 	}
@@ -144,7 +145,7 @@ func (e *Engine) Execute(ctx context.Context, userId uint, prompt string) (Agent
 	if !ok {
 		return AgentResult{
 			Kind:   "reply",
-			Reply:  "这个操作我暂时不支持。可以试试：搜网址、联网查资料、添加网址、管理分组、整理重复项、改面板设置。",
+			Reply:  "这个操作我暂时不支持。可以试试：搜网址、联网查资料、丢个链接给我收藏、管理分组、内网归组、失效体检、全部重新归纳、整理重复项、改面板设置。",
 			Intent: string(IntentChat),
 		}, nil
 	}
@@ -208,6 +209,12 @@ func (e *Engine) route(ctx context.Context, userId uint, prompt string) (Intent,
 4. 排序类工具必须给出重排后的完整顺序列表。
 5. 信息不足或拿不准时，tool 留空并在 reply 里问清楚。
 6. reply 必须填写，是给用户看的一句话说明。
+7. 用户只发了一个网址（http/https 开头或裸域名，没有其他指令）→ 这是要收藏：
+   panel.add_item，params.url 填该网址。
+8. 把内网/局域网地址归到某分组 → panel.batch_move_intranet，targetGroup 用用户说的分组名（没说就默认）。
+9. 检查失效/打不开/死链网址 → panel.check_dead_links。
+10. 重新归纳/重新分类/整理所有网址、分组由你决定 → panel.apply_organize（直接执行）；
+    用户想先看方案再定 → panel.organize_plan。
 
 输出格式：{"intent":"...","tool":"工具名或空","params":{...},"reply":"一句话说明"}`
 

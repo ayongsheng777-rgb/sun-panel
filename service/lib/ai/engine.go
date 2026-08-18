@@ -17,6 +17,17 @@ import (
 //  1. 提示词层：路由提示词声明删除必须带暗号，否则直接回复「是不是删除网址\分组？」；
 //  2. 业务层：DeleteGuard 关键词兜底，命中删除词且无暗号即拒绝，不进入工具链；
 //  3. 工具层：panel.delete_item / panel.delete_group 实际执行删除（带暗号才被路由选中）。
+// AgentResult AI 操作代理的统一返回
+type AgentResult struct {
+	Kind    string         `json:"kind"`             // items | reply | changed | data
+	Reply   string         `json:"reply"`            // 给用户看的一句话说明
+	ItemIds []uint         `json:"itemIds"`          // kind=items 时匹配的网址 id（按相关度排序）
+	Changed bool           `json:"changed"`          // 面板数据是否有变更
+	Tool    string         `json:"tool,omitempty"`   // 本次实际执行的工具名（可观测性）
+	Intent  string         `json:"intent,omitempty"` // 路由判定的意图类型
+	Data    map[string]any `json:"data,omitempty"`   // kind=data 时的结构化载荷
+}
+
 type Engine struct {
 	cfg      AIConfig
 	registry *tools.Registry

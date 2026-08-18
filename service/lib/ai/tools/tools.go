@@ -1,9 +1,9 @@
 // Package tools 是 Sun-Panel AI 的工具注册表（Tool Registry）。
 //
 // 设计要点（对应实施文档 V2.0 §9-16、§49-50）：
-//  1. 每个工具显式声明 Permission()，删除类权限被永久禁用；
-//  2. 注册期（Register）+ 执行期（Execute）双重校验，任何 PermissionDelete 工具都无法进入注册表，
-//     即使被强行构造也无法执行；
+//  1. 每个工具显式声明 Permission()。删除类权限（PermissionDelete）仅作防御性兜底；
+//  2. 注册期（Register）+ 执行期（Execute）双重校验：声明 PermissionDelete 的工具一律拒绝
+//     （防御性兜底）；实际删除通过 PermissionUpdate 工具 + 意图层暗号「泳昇」把关（见 lib/ai DeleteGuard）；
 //  3. 本包**不依赖** lib/ai，避免循环引用。需要 LLM 能力的工具通过 ExecContext.LLM 注入调用。
 package tools
 
@@ -24,11 +24,11 @@ const (
 	PermissionRead   Permission = "read"   // 只读：查询/分析/生成方案
 	PermissionCreate Permission = "create" // 新建：分组/网址
 	PermissionUpdate Permission = "update" // 修改：改名/排序/移动/编辑
-	PermissionDelete Permission = "delete" // 【永久禁用】删除类，不允许注册也不允许执行
+	PermissionDelete Permission = "delete" // 防御性兜底：正常删除走暗号放行，删除工具用 PermissionUpdate 绕过此声明
 )
 
 // ErrDeletePermissionForbidden 删除权限被硬性拒绝
-var ErrDeletePermissionForbidden = errors.New("删除类操作已被系统永久禁用，AI 无法执行；请在页面上手动删除")
+var ErrDeletePermissionForbidden = errors.New("删除类操作需要暗号授权「泳昇」，请在指令中携带暗号后再试；或在页面上手动删除")
 
 // LLMFunc 由 lib/ai 注入的大模型调用函数（避免 tools 反向依赖 ai 包）
 type LLMFunc func(ctx context.Context, systemPrompt, userPrompt string, wantJSON bool) (string, error)

@@ -44,7 +44,13 @@ func (a *AiAgent) Execute(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 150*time.Second)
 	defer cancel()
 
-	result, err := ai.AgentExecute(ctx, cfg, userInfo.ID, req.Prompt)
+	engine, err := ai.NewEngine(cfg)
+	if err != nil {
+		apiReturn.Error(c, "AI 引擎初始化失败："+err.Error())
+		return
+	}
+
+	result, err := engine.Execute(ctx, userInfo.ID, req.Prompt)
 	if err != nil {
 		apiReturn.Error(c, "AI 处理失败："+err.Error())
 		return
@@ -54,6 +60,15 @@ func (a *AiAgent) Execute(c *gin.Context) {
 		"kind":    result.Kind,
 		"reply":   result.Reply,
 		"changed": result.Changed,
+	}
+	if result.Tool != "" {
+		data["tool"] = result.Tool
+	}
+	if result.Intent != "" {
+		data["intent"] = result.Intent
+	}
+	if len(result.Data) > 0 {
+		data["data"] = result.Data
 	}
 
 	// kind=items：按 id 顺序取出完整网址（URL 永远来自数据库，AI 不接触）

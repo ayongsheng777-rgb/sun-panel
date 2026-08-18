@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NCard, NDivider, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, NSpin, NSwitch, NTag, useMessage } from 'naive-ui'
-import { getAIConfig, listAIModels, saveAIConfig, testAIModels } from '@/api/panel/aiSearch'
+import { getAIConfig, listAIModels, saveAIConfig, testAIModels } from '@/api/ai'
 import { t } from '@/locales'
 
 const props = withDefaults(defineProps<{ visible?: boolean; embedded?: boolean }>(), {

@@ -15,10 +15,13 @@ import (
 
 // AgentResult AI 操作代理的统一返回
 type AgentResult struct {
-	Kind    string `json:"kind"`    // items | reply | changed
-	Reply   string `json:"reply"`   // 给用户看的一句话说明
-	ItemIds []uint `json:"itemIds"` // kind=items 时匹配的网址 id（按相关度排序）
-	Changed bool   `json:"changed"` // 面板数据是否有变更
+	Kind    string         `json:"kind"`             // items | reply | changed | data
+	Reply   string         `json:"reply"`            // 给用户看的一句话说明
+	ItemIds []uint         `json:"itemIds"`          // kind=items 时匹配的网址 id（按相关度排序）
+	Changed bool           `json:"changed"`          // 面板数据是否有变更
+	Tool    string         `json:"tool,omitempty"`   // 本次实际执行的工具名（可观测性）
+	Intent  string         `json:"intent,omitempty"` // 路由判定的意图类型
+	Data    map[string]any `json:"data,omitempty"`   // kind=data 时的结构化载荷
 }
 
 // agentAction LLM 输出的操作指令
@@ -34,6 +37,9 @@ type groupSnapshot struct {
 	Items []string `json:"items"`
 }
 
+// Deprecated: 已由 Engine.Execute（lib/ai/engine.go，意图路由 + 工具注册表）取代，
+// 仅作为回滚参考保留，控制器不再调用。新增能力请写成 tools.Tool 注册到注册表。
+//
 // AgentExecute 对话式 AI 操作代理：理解自然语言指令 → 输出结构化动作 → 白名单校验执行。
 // 支持：搜索全部内容、新建/改名分组、分组排序、移动网址、组内网址排序、修改网址信息、纯对话。
 // 【禁止删除】：LLM 侧规则拒绝 + 后端 switch 白名单双重保险。

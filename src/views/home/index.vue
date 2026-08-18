@@ -7,8 +7,8 @@ import { Clock, SearchBox, SystemMonitor } from '@/components/deskModule'
 import { SvgIcon } from '@/components/common'
 import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
 import { getList as getGroupList } from '@/api/panel/itemIconGroup'
-import { type AIAgentResult, aiAgent } from '@/api/panel/aiAgent'
-import { type AIAddWebsiteResult, addWebsite, githubSearch } from '@/api/panel/aiManage'
+import { aiChat } from '@/api/ai'
+import type { AIAgentResult } from '@/types/ai'
 import { getDefaultAddress } from '@/utils/address'
 
 import { setTitle, updateLocalUserInfo } from '@/utils/cmn'
@@ -88,10 +88,12 @@ const aiSearchError = ref<string | null>(null)
 const aiSearchMeta = ref<{ provider: string; model: string; latencyMs: number; fallback: boolean }>(
   { provider: '', model: '', latencyMs: 0, fallback: false },
 )
-// AI 操作指令（添加网址 / GitHub 检索）的结果，展示在搜索框下方弹性面板
-const aiActionResult = ref<AIAddWebsiteResult | null>(null)
-// AI 操作代理的对话回复（搜索说明 / 管理操作结果 / 纯对话）
+// AI 引擎的文字回复（面板检索说明 / 联网结果 / 管理操作结果 / 纯对话）
 const aiAgentReply = ref('')
+// 联网搜索时的参考来源
+const aiWebSources = ref<{ title: string; url: string; host: string }[]>([])
+// 本次命中的工具名与是否改动面板（用于结果区标签）
+const aiToolName = ref('')
 
 function openPage(openMethod: number, url: string, title?: string) {
   switch (openMethod) {
@@ -368,7 +370,23 @@ function itemFrontEndSearch(keyword?: string) {
   }
 }
 
-// AI 智能搜索：回车/点击 AI 时触发，自动降级普通搜索；支持「添加xx」「GitHub xx」操作指令；其余交给 AI 操作代理
+// 从结构化数据里取联网参考来源（后端 web 搜索工具返回 data.results）
+function pickWebSources(data?: Record<string, any>) {
+  const raw = data?.results
+  if (!Array.isArray(raw))
+    return []
+  return raw
+    .filter((r: any) => r && typeof r.url === 'string' && /^https?:\/\//i.test(r.url))
+    .slice(0, 6)
+    .map((r: any) => ({
+      title: String(r.title || r.url),
+      url: String(r.url),
+      host: String(r.host || ''),
+    }))
+}
+
+// AI 入口（P4 统一）：不再在前端做关键词分流，一律交给后端意图路由引擎，
+// 由它决定是面板检索、联网搜索、实时信息、添加网址、分组调整、整理还是纯聊天。删除类由后端硬性拒绝。
 async function onAiSearch(keyword?: string) {
   const kw = (keyword ?? '').trim()
   searchKeyword.value = kw
@@ -377,46 +395,23 @@ async function onAiSearch(keyword?: string) {
     return
   }
   searchMode.value = 'ai'
-  aiActionResult.value = null
   aiAgentReply.value = ''
-
-  // 操作类指令：添加网址 / GitHub 检索（走 AI 助手同款接口，结果在下方弹性面板展示）
-  const isGithubAction = /github/i.test(kw)
-  const isAddAction = /添加|收录|加入/.test(kw)
-  if (isGithubAction || isAddAction) {
-    aiSearchLoading.value = true
-    aiSearchError.value = null
-    aiSearchResults.value = []
-    try {
-      const call = isGithubAction ? githubSearch : addWebsite
-      const { code, data, msg } = await call<AIAddWebsiteResult>(kw)
-      if (code === 0 && data) {
-        aiActionResult.value = data
-        ms.success(`已添加到「${data.category}」分组`)
-        getList()
-      }
-      else {
-        aiSearchError.value = msg || '操作失败，请稍后重试'
-      }
-    }
-    catch (e: any) {
-      aiSearchError.value = e?.message || '操作失败，请稍后重试'
-    }
-    aiSearchLoading.value = false
-    return
-  }
-
-  // 其余全部交给 AI 操作代理：搜索全部内容 / 新建·改名分组 / 分组·网址排序 / 移动网址 / 修改网址 / 对话（禁止删除）
+  aiWebSources.value = []
+  aiToolName.value = ''
+  aiSearchResults.value = []
   aiSearchLoading.value = true
   aiSearchError.value = null
+
   try {
-    const { code, data, msg } = await aiAgent<AIAgentResult>(kw)
+    const { code, data, msg } = await aiChat<AIAgentResult>(kw)
     if (code === 0 && data) {
       aiAgentReply.value = data.reply || ''
       aiSearchResults.value = data.kind === 'items' ? (data.items ?? []) : []
+      aiWebSources.value = pickWebSources(data.data)
+      aiToolName.value = data.tool || ''
       aiSearchMeta.value = { provider: '', model: '', latencyMs: 0, fallback: false }
       if (data.changed) {
-        ms.success(data.reply || '操作完成')
+        ms.success(data.reply || '面板已更新')
         getList()
       }
     }
@@ -425,7 +420,7 @@ async function onAiSearch(keyword?: string) {
     }
   }
   catch (e) {
-    // 失败自动降级普通搜索
+    // 网络/接口异常：自动降级为本地普通搜索，保证搜索框永远可用
     aiSearchError.value = null
     searchMode.value = 'normal'
     itemFrontEndSearch(kw)
@@ -438,8 +433,9 @@ function clearSearch() {
   searchMode.value = 'normal'
   aiSearchResults.value = []
   aiSearchError.value = null
-  aiActionResult.value = null
   aiAgentReply.value = ''
+  aiWebSources.value = []
+  aiToolName.value = ''
   filterItems.value = items.value
 }
 
@@ -524,6 +520,9 @@ function handleAddItem(itemIconGroupId?: number) {
                   <SvgIcon icon="material-symbols:auto-awesome" class="text-sky-300" />
                   <span>{{ t('panelHome.aiSearchTitle') }}</span>
                   <span v-if="aiSearchMeta.provider" class="text-xs opacity-70">· {{ aiSearchMeta.provider }} / {{ aiSearchMeta.model }}</span>
+                  <NTag v-if="aiToolName" size="small" type="info" round>
+                    {{ aiToolName }}
+                  </NTag>
                   <NTag v-if="aiSearchMeta.fallback" size="small" type="warning" round>
                     {{ t('panelHome.aiSearchFallback') }}
                   </NTag>
@@ -540,36 +539,29 @@ function handleAddItem(itemIconGroupId?: number) {
               <div v-else-if="aiSearchError" class="text-sm text-orange-300">
                 {{ aiSearchError }}
               </div>
-              <!-- AI 操作指令（添加网址 / GitHub 检索）结果卡片 -->
-              <div v-else-if="aiActionResult" class="rounded-xl border border-slate-400/40 p-3 flex flex-col gap-2">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-lg bg-sky-100 flex items-center justify-center text-sky-600 font-bold">
-                    {{ aiActionResult.item.title?.slice(0, 1) }}
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="font-medium truncate">
-                      {{ aiActionResult.item.title }}
-                    </div>
-                    <div class="text-xs opacity-70 truncate">
-                      {{ aiActionResult.item.url }}
-                    </div>
-                  </div>
-                  <NTag size="small" type="info" round>
-                    {{ aiActionResult.category }}
-                  </NTag>
-                </div>
-                <div class="text-xs opacity-70">
-                  已添加到「{{ aiActionResult.category }}」分组，首页已同步更新。
-                </div>
-              </div>
               <div v-else-if="aiSearchResults.length === 0 && !aiAgentReply" class="text-sm opacity-70">
                 {{ t('panelHome.aiSearchEmpty') }}
               </div>
               <template v-else>
-                <!-- AI 操作代理的对话回复（搜索说明 / 管理操作结果 / 纯对话） -->
+                <!-- AI 引擎的文字回复（面板检索说明 / 联网结果 / 管理操作结果 / 纯对话） -->
                 <div v-if="aiAgentReply" class="text-sm whitespace-pre-wrap" :class="aiSearchResults.length ? 'mb-2 opacity-90' : ''">
                   {{ aiAgentReply }}
                 </div>
+
+                <!-- 联网参考来源 -->
+                <div v-if="aiWebSources.length" class="mb-2 flex flex-col gap-1">
+                  <div class="text-xs opacity-60">
+                    参考来源
+                  </div>
+                  <a
+                    v-for="(s, i) in aiWebSources" :key="i"
+                    class="cursor-pointer truncate text-xs text-sky-300 hover:underline"
+                    @click="openPage(2, s.url, s.title)"
+                  >
+                    {{ i + 1 }}. {{ s.title }}<span v-if="s.host" class="opacity-60"> · {{ s.host }}</span>
+                  </a>
+                </div>
+
                 <div v-if="aiSearchResults.length" class="icon-info-box">
                   <div v-for="item in aiSearchResults" :key="item.id" @contextmenu="(e) => handleContextMenu(e, -1, item)">
                     <AppIcon

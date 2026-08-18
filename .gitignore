@@ -11,6 +11,10 @@ node_modules
 .DS_Store
 dist
 dist-ssr
+# 本地构建验证与备份产物（不入仓库）
+dist_verify
+dist_build
+dist_bak_*
 coverage
 *.local
 

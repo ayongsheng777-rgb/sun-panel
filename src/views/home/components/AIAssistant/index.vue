@@ -1,130 +1,268 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { NButton, NInput, NModal, NSpin, NTab, NTabs, NTag, useMessage } from 'naive-ui'
+import { nextTick, ref } from 'vue'
+import { NButton, NInput, NModal, NSpin, NTag, useMessage } from 'naive-ui'
 import { SvgIcon } from '@/components/common'
-import { addWebsite, githubSearch, type AIAddWebsiteResult } from '@/api/panel/aiManage'
+import { aiChat } from '@/api/ai'
+import type { AIAgentResult, AIMessage } from '@/types/ai'
+import { getDefaultAddress } from '@/utils/address'
 
 defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ (e: 'update:visible', visible: boolean): void; (e: 'done'): void }>()
 
 const ms = useMessage()
-const mode = ref<'website' | 'github'>('website')
 const prompt = ref('')
 const loading = ref(false)
-const result = ref<AIAddWebsiteResult | null>(null)
-const repo = ref('')
-const error = ref('')
+const messages = ref<AIMessage[]>([])
+const listRef = ref<HTMLElement | null>(null)
 
-const examples: Record<string, string[]> = {
-  website: ['添加 ChatGPT 官网', '添加 docker 管理工具', '添加股票行情网站', '添加 B 站'],
-  github: ['docker 管理面板', 'nas 相册', 'ai 聊天客户端', 'vue 后台框架'],
+// 快捷示例：覆盖「面板检索 / 联网实时 / 管理操作 / 整理」四类能力
+const examples = [
+  '帮我找一下 NAS 相关的网址',
+  '今天广州天气怎么样',
+  '添加 ChatGPT 官网',
+  '把常用工具分组整理一下',
+]
+
+function newId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-async function submit() {
-  const p = prompt.value.trim()
-  if (!p)
+function scrollToBottom() {
+  nextTick(() => {
+    if (listRef.value)
+      listRef.value.scrollTop = listRef.value.scrollHeight
+  })
+}
+
+// 从结构化数据里取联网来源（后端 web 搜索工具返回 data.results）
+function pickSources(data?: Record<string, any>) {
+  const raw = data?.results
+  if (!Array.isArray(raw))
+    return []
+  return raw
+    .filter((r: any) => r && typeof r.url === 'string' && /^https?:\/\//i.test(r.url))
+    .slice(0, 6)
+    .map((r: any) => ({
+      title: String(r.title || r.url),
+      url: String(r.url),
+      host: String(r.host || ''),
+    }))
+}
+
+async function send(text?: string) {
+  const p = (text ?? prompt.value).trim()
+  if (!p || loading.value)
     return
+
+  messages.value.push({ id: newId(), role: 'user', content: p, ts: Date.now() })
+  prompt.value = ''
   loading.value = true
-  error.value = ''
-  result.value = null
-  repo.value = ''
+  scrollToBottom()
+
   try {
-    const call = mode.value === 'github' ? githubSearch<AIAddWebsiteResult> : addWebsite<AIAddWebsiteResult>
-    const { code, data, msg } = await call(p)
+    const { code, data, msg } = await aiChat<AIAgentResult>(p)
     if (code === 0 && data) {
-      result.value = data
-      repo.value = (data as any).repo || ''
-      ms.success(`已添加到「${data.category}」分组`)
-      emit('done')
+      messages.value.push({
+        id: newId(),
+        role: 'assistant',
+        content: data.reply || (data.kind === 'items' ? '已找到以下网址：' : '已完成'),
+        items: data.kind === 'items' ? (data.items ?? []) : [],
+        intent: data.intent,
+        tool: data.tool,
+        data: data.data,
+        changed: data.changed,
+        ts: Date.now(),
+      })
+      if (data.changed) {
+        ms.success('面板已更新')
+        emit('done')
+      }
     }
     else {
-      error.value = msg || '添加失败，请稍后重试'
+      messages.value.push({
+        id: newId(),
+        role: 'assistant',
+        content: msg || 'AI 暂时不可用，请稍后重试',
+        error: true,
+        ts: Date.now(),
+      })
     }
   }
   catch (e: any) {
-    error.value = e?.message || '添加失败，请稍后重试'
+    messages.value.push({
+      id: newId(),
+      role: 'assistant',
+      content: e?.message || 'AI 请求失败，请检查网络或模型配置',
+      error: true,
+      ts: Date.now(),
+    })
   }
   loading.value = false
+  scrollToBottom()
 }
 
-function useExample(example: string) {
-  prompt.value = example
+// 命中的面板网址：点击直达用户设定的默认地址
+function openItem(item: Panel.ItemInfo) {
+  const address = getDefaultAddress(item)
+  const url = address?.url || item.url
+  if (!url)
+    return
+  const openMethod = address?.openMethod ?? item.openMethod
+  window.open(url, openMethod === 1 ? '_self' : '_blank')
+}
+
+function openSource(url: string) {
+  window.open(url, '_blank')
+}
+
+function clearAll() {
+  messages.value = []
+  prompt.value = ''
 }
 
 function close() {
   emit('update:visible', false)
-  result.value = null
-  repo.value = ''
-  error.value = ''
 }
 </script>
 
 <template>
   <NModal
-    :show="visible" preset="card" title="AI 助手" style="width: 560px; max-width: 92vw;"
+    :show="visible" preset="card" title="AI 助手" style="width: 620px; max-width: 94vw;"
     :on-close="close"
   >
-    <NTabs v-model:value="mode" type="segment" size="small">
-      <NTab name="website">
-        添加网址
-      </NTab>
-      <NTab name="github">
-        GitHub 检索
-      </NTab>
-    </NTabs>
+    <template #header-extra>
+      <NButton size="tiny" quaternary :disabled="!messages.length" @click="clearAll">
+        <template #icon>
+          <SvgIcon icon="material-symbols:delete-sweep-outline" />
+        </template>
+        清空
+      </NButton>
+    </template>
 
-    <div class="mt-3 flex flex-col gap-3">
-      <div class="text-sm text-slate-500">
-        <template v-if="mode === 'website'">
-          告诉我你想添加的网站，我会联网找到官网、自动分类并配好图标。
-        </template>
-        <template v-else>
-          描述你想要的 GitHub 开源项目，我会检索仓库、选出最佳项目并加入导航。
-        </template>
+    <div class="flex flex-col gap-3">
+      <div class="text-xs text-slate-400">
+        直接说人话就行：找网址、查天气时间新闻、加网址、改分组、整理面板。删除操作不会执行。
       </div>
 
-      <div class="flex gap-2">
-        <NInput
-          v-model:value="prompt" :placeholder="mode === 'github' ? '例如：docker 管理面板' : '例如：添加 ChatGPT 官网'"
-          clearable @keyup.enter="submit"
-        />
-        <NButton type="primary" :loading="loading" @click="submit">
-          <template #icon>
-            <SvgIcon icon="material-symbols:auto-awesome" />
-          </template>
-          添加
-        </NButton>
+      <!-- 对话区 -->
+      <div ref="listRef" class="ai-msg-list flex flex-col gap-3">
+        <div v-if="!messages.length" class="py-6 text-center text-sm text-slate-400">
+          还没有对话，试试下面的示例。
+        </div>
+
+        <div v-for="m in messages" :key="m.id" class="flex flex-col gap-1">
+          <!-- 用户消息 -->
+          <div v-if="m.role === 'user'" class="flex justify-end">
+            <div class="max-w-[80%] rounded-2xl rounded-br-sm bg-sky-500 px-3 py-2 text-sm text-white">
+              {{ m.content }}
+            </div>
+          </div>
+
+          <!-- 助手消息 -->
+          <div v-else class="flex flex-col gap-2">
+            <div class="flex items-start gap-2">
+              <div class="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+                <SvgIcon icon="material-symbols:auto-awesome" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <div
+                  class="whitespace-pre-wrap rounded-2xl rounded-bl-sm px-3 py-2 text-sm"
+                  :class="m.error
+                    ? 'bg-orange-50 text-orange-600 dark:bg-orange-500/10'
+                    : 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-200'"
+                >
+                  {{ m.content }}
+                </div>
+
+                <!-- 工具标签 -->
+                <div v-if="m.tool" class="mt-1 flex flex-wrap items-center gap-1">
+                  <NTag size="tiny" round :bordered="false" type="info">
+                    {{ m.tool }}
+                  </NTag>
+                  <NTag v-if="m.changed" size="tiny" round :bordered="false" type="success">
+                    已改动面板
+                  </NTag>
+                </div>
+
+                <!-- 面板命中网址 -->
+                <div v-if="m.items && m.items.length" class="mt-2 flex flex-col gap-1">
+                  <div
+                    v-for="item in m.items" :key="item.id"
+                    class="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-2 py-1.5 transition-colors hover:bg-sky-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                    @click="openItem(item)"
+                  >
+                    <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-sky-100 text-xs font-bold text-sky-600">
+                      {{ item.title?.slice(0, 1) }}
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="truncate text-sm">
+                        {{ item.title }}
+                      </div>
+                      <div class="truncate text-xs text-slate-400">
+                        {{ getDefaultAddress(item)?.url || item.url }}
+                      </div>
+                    </div>
+                    <SvgIcon icon="material-symbols:open-in-new" class="shrink-0 text-slate-400" />
+                  </div>
+                </div>
+
+                <!-- 联网参考来源 -->
+                <div v-if="pickSources(m.data).length" class="mt-2 flex flex-col gap-1">
+                  <div class="text-xs text-slate-400">
+                    参考来源
+                  </div>
+                  <a
+                    v-for="(s, i) in pickSources(m.data)" :key="i"
+                    class="cursor-pointer truncate text-xs text-sky-500 hover:underline"
+                    @click="openSource(s.url)"
+                  >
+                    {{ i + 1 }}. {{ s.title }}<span v-if="s.host" class="text-slate-400"> · {{ s.host }}</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="loading" class="flex items-center gap-2 pl-8 text-sm text-slate-400">
+          <NSpin size="small" />
+          <span>正在思考，免费算力高峰期可能要 1~2 分钟…</span>
+        </div>
       </div>
 
-      <div class="flex flex-wrap gap-2">
+      <!-- 快捷示例 -->
+      <div class="flex flex-wrap items-center gap-2">
         <span class="text-xs text-slate-400">试试：</span>
-        <NButton v-for="example in examples[mode]" :key="example" size="tiny" quaternary @click="useExample(example)">
+        <NButton
+          v-for="example in examples" :key="example"
+          size="tiny" quaternary :disabled="loading" @click="send(example)"
+        >
           {{ example }}
         </NButton>
       </div>
 
-      <NSpin :show="loading">
-        <div v-if="error" class="text-sm text-orange-500">{{ error }}</div>
-
-        <div v-if="result" class="rounded-xl border border-slate-200 p-3 flex flex-col gap-2">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-sky-100 flex items-center justify-center text-sky-600 font-bold">
-              {{ result.item.title?.slice(0, 1) }}
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="font-medium truncate">{{ result.item.title }}</div>
-              <div class="text-xs text-slate-400 truncate">{{ result.item.url }}</div>
-            </div>
-            <NTag size="small" type="info" round>{{ result.category }}</NTag>
-          </div>
-          <div v-if="repo" class="text-xs text-slate-400">
-            来源仓库：{{ repo }}
-          </div>
-          <div class="text-xs text-slate-500">
-            已添加到「{{ result.category }}」分组，刷新首页即可看到。
-          </div>
-        </div>
-      </NSpin>
+      <!-- 输入区 -->
+      <div class="flex gap-2">
+        <NInput
+          v-model:value="prompt" placeholder="说点什么，例如：帮我找一下影音相关的网址"
+          clearable :disabled="loading" @keyup.enter="send()"
+        />
+        <NButton type="primary" :loading="loading" @click="send()">
+          <template #icon>
+            <SvgIcon icon="material-symbols:send-outline" />
+          </template>
+          发送
+        </NButton>
+      </div>
     </div>
   </NModal>
 </template>
+
+<style scoped>
+/* 用 min() 限高，避免移动端软键盘顶起后对话区超出屏幕 */
+.ai-msg-list {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+</style>

@@ -1,4 +1,4 @@
-// Sun-Panel AI 统一类型定义（P4：顶部搜索框与右下角助手共用同一套后端）
+// 泳昇-Panel AI 统一类型定义（P4：顶部搜索框与右下角助手共用同一套后端）
 // 对应后端 lib/ai/engine.go 的 AgentResult。
 
 // AI 引擎返回的结果种类

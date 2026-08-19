@@ -1,4 +1,4 @@
-// Sun-Panel AI 统一 API 入口（P4）。
+// 泳昇-Panel AI 统一 API 入口（P4）。
 // 顶部搜索框（SearchBox）与右下角助手（AIAssistant）都只通过这里访问后端，
 // 后端统一走 lib/ai/engine.go 的意图路由 + 工具注册表。
 import { get, post } from '@/utils/request'

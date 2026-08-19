@@ -256,7 +256,7 @@ function handleChangeLanuage(value: Language) {
       </div>
 
       <div class="mt-4 flex justify-center text-slate-300">
-        Powered By <a href="https://github.com/ayongsheng777-rgb/sun-panel" target="_blank" class="ml-[5px] text-slate-500">Sun-Panel</a>
+        Powered By <a href="https://github.com/ayongsheng777-rgb/sun-panel" target="_blank" class="ml-[5px] text-slate-500">泳昇-Panel</a>
       </div>
     </NCard>
   </div>

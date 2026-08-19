@@ -3,7 +3,7 @@ import { PanelPanelConfigStyleEnum, PanelStateNetworkModeEnum } from '@/enums'
 import defaultBackground from '@/assets/defaultBackground.webp'
 const LOCAL_NAME = 'panelStorage'
 
-const defaultFooterHtml = '<div class="flex justify-center text-slate-300" style="margin-top:100px">Powered By <a href="https://github.com/ayongsheng777-rgb/sun-panel" target="_blank" class="ml-[5px]">Sun-Panel</a></div>'
+const defaultFooterHtml = '<div class="flex justify-center text-slate-300" style="margin-top:100px">Powered By <a href="https://github.com/ayongsheng777-rgb/sun-panel" target="_blank" class="ml-[5px]">泳昇-Panel</a></div>'
 
 export function defaultStatePanelConfig(): Panel.panelConfig {
   return {
@@ -14,7 +14,7 @@ export function defaultStatePanelConfig(): Panel.panelConfig {
     iconTextColor: '#ffffff',
     iconTextInfoHideDescription: false,
     iconTextIconHideTitle: false,
-    logoText: 'Sun-Panel',
+    logoText: '泳昇-Panel',
     logoImageSrc: '',
     clockShowSecond: false,
     searchBoxShow: false,

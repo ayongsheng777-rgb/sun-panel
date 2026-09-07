@@ -20,7 +20,7 @@ const isAdmin = computed(() => authStore.userInfo?.role === 1)
 // app: 前缀 = 复用 src/components/apps 下的原管理组件
 type MenuKey =
   | 'app:UserInfo' | 'app:Style' | 'app:ItemGroupManage' | 'app:UploadFileManager'
-  | 'app:ImportExport' | 'app:Users' | 'app:About'
+  | 'app:ImportExport' | 'app:Users' | 'app:About' | 'app:SystemSetting'
   | 'ai' | 'security' | 'permission'
 
 interface MenuItem {
@@ -38,19 +38,25 @@ const active = ref<MenuKey>('app:UserInfo')
 const menuOpen = ref(false)
 
 const menuGroups = computed<MenuGroup[]>(() => {
+  // 原来散落各处的设置项，统一收进「系统设置」一个入口（内含品牌/自定义代码/图库/备份/Docker/开放接口）
   const general: MenuItem[] = [
     { key: 'app:UserInfo', label: '账号资料', icon: 'material-symbols-person-edit-outline-rounded' },
     { key: 'app:Style', label: '外观设置', icon: 'ion-color-palette-outline' },
     { key: 'app:ItemGroupManage', label: '分组管理', icon: 'material-symbols-ad-group-outline-rounded' },
     { key: 'app:UploadFileManager', label: '文件管理', icon: 'tabler:file-upload' },
+  ]
+
+  const system: MenuItem[] = [
+    { key: 'app:SystemSetting', label: '系统设置', icon: 'material-symbols-settings-outline' },
     { key: 'app:ImportExport', label: '导入导出', icon: 'icon-park-outline-import-and-export' },
+    { key: 'app:About', label: '关于', icon: 'lucide-info' },
   ]
   if (isAdmin.value)
-    general.push({ key: 'app:Users', label: '用户管理', icon: 'material-symbols:group-outline' })
-  general.push({ key: 'app:About', label: '关于', icon: 'lucide-info' })
+    system.splice(1, 0, { key: 'app:Users', label: '用户管理', icon: 'material-symbols:group-outline' })
 
   const groups: MenuGroup[] = [
-    { title: '常规管理', items: general },
+    { title: '常规', items: general },
+    { title: '系统', items: system },
     { title: 'AI', items: [{ key: 'ai', label: 'AI 配置', icon: 'material-symbols:auto-awesome' }] },
   ]
 

@@ -46,22 +46,31 @@ const defaultSearchEngineList = ref<DeskModule.SearchBox.SearchEngine[]>([
     iconSrc: SvgSrcGoogle,
     title: 'Google',
     url: 'https://www.google.com/search?q=%s',
+    key: 'google',
+    isDefault: true,
+    sort: 0,
   },
   {
     iconSrc: SvgSrcBaidu,
     title: 'Baidu',
     url: 'https://www.baidu.com/s?wd=%s',
+    key: 'baidu',
+    isDefault: true,
+    sort: 1,
   },
   {
     iconSrc: SvgSrcBing,
     title: 'Bing',
     url: 'https://www.bing.com/search?q=%s',
+    key: 'bing',
+    isDefault: true,
+    sort: 2,
   },
 ])
 
 const defaultState: State = {
   currentSearchEngine: defaultSearchEngineList.value[0],
-  searchEngineList: [] || defaultSearchEngineList,
+  searchEngineList: defaultSearchEngineList.value,
   newWindowOpen: false,
 }
 
@@ -139,10 +148,18 @@ function handleClearSearchTerm() {
 
 onMounted(() => {
   moduleConfig.getValueByNameFromCloud<State>('deskModuleSearchBox').then(({ code, data }) => {
-    if (code === 0)
-      state.value = data || defaultState
-    else
+    if (code === 0 && data) {
+      // 老数据里可能没有引擎列表（历史版本只存了当前引擎），补默认值
+      state.value = {
+        ...data,
+        searchEngineList: data.searchEngineList?.length
+          ? data.searchEngineList
+          : defaultSearchEngineList.value,
+      }
+    }
+    else {
       state.value = defaultState
+    }
   })
 })
 </script>
@@ -177,7 +194,7 @@ onMounted(() => {
       <div class="flex items-center">
         <div class="flex items-center">
           <div
-            v-for="item, index in defaultSearchEngineList"
+            v-for="item, index in state.searchEngineList"
             :key="index"
             :title="item.title"
             class="w-[40px] h-[40px] mr-[10px]  cursor-pointer bg-[#ffffff] flex items-center justify-center rounded-xl"

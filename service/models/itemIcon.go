@@ -23,8 +23,10 @@ type ItemIcon struct {
 	UserId          uint                      `json:"userId"`
 	User            User                      `json:"user"`
 
+	// OnlyName 唯一标识，供 OpenAPI / 浏览器插件定位与更新卡片
+	OnlyName string `gorm:"type:varchar(50);index" json:"onlyName"`
 	// 弹性多地址：以 JSON 字符串列持久化，兼容旧 url/lanUrl 双地址模型
-	AddressesJson string                  `gorm:"type:text" json:"-"`
+	AddressesJson string                 `gorm:"type:text" json:"-"`
 	Addresses     []datatype.ItemAddress `gorm:"-" json:"addresses"`
 }
 

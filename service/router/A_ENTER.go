@@ -1,8 +1,13 @@
 package router
 
 import (
+	"os"
+	"path/filepath"
+
+	"sun-panel/biz"
 	"sun-panel/global"
-	// "sun-panel/router/admin"
+	"sun-panel/router/docker"
+	"sun-panel/router/openapi"
 	"sun-panel/router/openness"
 	"sun-panel/router/panel"
 	"sun-panel/router/system"
@@ -20,13 +25,27 @@ func InitRouters(addr string) error {
 	system.Init(routerGroup)
 	panel.Init(routerGroup)
 	openness.Init(routerGroup)
+	docker.Init(routerGroup)
+
+	// 开放接口：挂在根路径，地址形如 http://域名:端口/openapi/v1
+	openapi.Init(rootRouter)
+
+	// 自定义 CSS / JS：改到 conf/custom 下，重新发版前端不会被清掉
+	customDir := biz.CustomDir
+	if _, err := biz.EnsureCustomDir(); err != nil {
+		global.Logger.Errorf("自定义样式目录创建失败: %v", err)
+	}
+	if abs, err := filepath.Abs(customDir); err == nil {
+		customDir = abs
+	}
+	_ = os.MkdirAll(customDir, 0755)
 
 	// WEB文件服务
 	{
 		webPath := "./web"
 		router.StaticFile("/", webPath+"/index.html")
 		router.Static("/assets", webPath+"/assets")
-		router.Static("/custom", webPath+"/custom")
+		router.Static("/custom", customDir)
 		router.StaticFile("/favicon.ico", webPath+"/favicon.ico")
 		router.StaticFile("/favicon.svg", webPath+"/favicon.svg")
 	}

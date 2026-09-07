@@ -9,4 +9,7 @@ func Init(routerGroup *gin.RouterGroup) {
 	InitItemIconGroup(routerGroup)
 	InitSearch(routerGroup)
 	InitAiManage(routerGroup)
+	InitGlobalSettingRouter(routerGroup)
+	InitPublicGalleryRouter(routerGroup)
+	InitBackupRouter(routerGroup)
 }

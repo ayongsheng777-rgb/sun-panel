@@ -15,6 +15,7 @@ dist-ssr
 dist_verify
 dist_build
 dist_bak_*
+node_modules.bak-*
 coverage
 *.local
 

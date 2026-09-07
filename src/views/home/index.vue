@@ -2,7 +2,7 @@
 import { VueDraggable } from 'vue-draggable-plus'
 import { type DropdownOption, NBackTop, NButton, NButtonGroup, NDropdown, NModal, NSkeleton, NSpin, useDialog, useMessage } from 'naive-ui'
 import { nextTick, onMounted, ref } from 'vue'
-import { AIAssistant, AdminPanel, AppIcon, AppStarter, EditItem } from './components'
+import { AIAssistant, AdminPanel, AppIcon, EditItem } from './components'
 import { Clock, SearchBox, SystemMonitor } from '@/components/deskModule'
 import { SvgIcon } from '@/components/common'
 import { deletes, getListByGroupId, saveSort } from '@/api/panel/itemIcon'
@@ -46,21 +46,8 @@ const dropdownShow = ref(false)
 const currentRightSelectItem = ref<Panel.ItemInfo | null>(null)
 const currentAddItenIconGroupId = ref<number | undefined>()
 
-const settingModalShow = ref(false)
 const aiAssistantShow = ref(false)
 const adminPanelShow = ref(false)
-// AppStarter 打开时的初始页面（UserInfo=设置首页，ItemGroupManage=分组管理直达）
-const appStarterDefault = ref('UserInfo')
-
-function openSettings() {
-  appStarterDefault.value = 'UserInfo'
-  settingModalShow.value = true
-}
-
-function openGroupManage() {
-  appStarterDefault.value = 'ItemGroupManage'
-  settingModalShow.value = true
-}
 
 // 退出登录：清空登录态并回登录页
 function handleLogout() {
@@ -720,18 +707,6 @@ function handleAddItem(itemIconGroupId?: number) {
     <!-- 悬浮按钮 -->
     <div class="fixed-element shadow-[0_0_10px_2px_rgba(0,0,0,0.2)]">
       <NButtonGroup vertical>
-        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" title="设置" @click="openSettings">
-          <template #icon>
-            <SvgIcon class="text-white font-xl" icon="majesticons-applications" />
-          </template>
-        </NButton>
-
-        <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" title="分组管理" @click="openGroupManage">
-          <template #icon>
-            <SvgIcon class="text-white font-xl" icon="material-symbols:ad-group-outline-rounded" />
-          </template>
-        </NButton>
-
         <NButton v-if="authStore.visitMode === VisitMode.VISIT_MODE_LOGIN" color="#2a2a2a6b" title="管理面板" @click="adminPanelShow = !adminPanelShow">
           <template #icon>
             <SvgIcon class="text-white font-xl" icon="material-symbols:admin-panel-settings" />
@@ -756,9 +731,6 @@ function handleAddItem(itemIconGroupId?: number) {
           </template>
         </NButton>
       </NButtonGroup>
-
-      <AppStarter v-model:visible="settingModalShow" :default-app="appStarterDefault" />
-      <!-- <Setting v-model:visible="settingModalShow" /> -->
     </div>
 
     <NBackTop

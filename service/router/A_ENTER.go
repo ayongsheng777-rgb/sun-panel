@@ -18,6 +18,9 @@ import (
 // 初始化总路由
 func InitRouters(addr string) error {
 	router := gin.Default()
+	// 开放接口的跨域预检必须挂在全局：OPTIONS 匹配不到任何 POST 路由，
+	// 分组中间件不会执行，预检会一直 404（浏览器插件因此报连接失败）。
+	router.Use(openapi.CorsMiddleware())
 	rootRouter := router.Group("/")
 	routerGroup := rootRouter.Group("api")
 

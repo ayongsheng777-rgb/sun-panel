@@ -14,6 +14,7 @@ import (
 func Init(rootRouter *gin.RouterGroup) {
 	itemApi := api_v1.ApiGroupApp.ApiOpenApi.Item
 	groupApi := api_v1.ApiGroupApp.ApiOpenApi.ItemGroup
+	versionApi := api_v1.ApiGroupApp.ApiOpenApi.Version
 
 	v1 := rootRouter.Group("openapi/v1")
 	{
@@ -24,5 +25,8 @@ func Init(rootRouter *gin.RouterGroup) {
 
 		v1.POST("itemGroup/getList", groupApi.GetList)
 		v1.POST("itemGroup/create", groupApi.Create)
+
+		// 版本探测：浏览器插件「测试连接」必调
+		v1.POST("version", versionApi.GetVersion)
 	}
 }

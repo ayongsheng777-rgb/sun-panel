@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { NAlert, NButton, NCard, NInput, NSwitch, useMessage } from 'naive-ui'
+import { post } from '@/utils/request'
 import {
   getOpenApiInfo,
   refreshOpenApiToken,
@@ -11,6 +12,7 @@ import {
 const ms = useMessage()
 
 const loading = ref(false)
+const testing = ref(false)
 const info = ref<OpenApiInfo>({
   enabled: false,
   token: '',
@@ -48,6 +50,34 @@ async function onToggle(enabled: boolean) {
   const res = await setOpenApiEnabled<OpenApiInfo>(enabled)
   if (res.code === 0 && res.data)
     info.value = res.data
+}
+
+// 直接调 /openapi/v1/version，不走登录态，验证 token + 后端响应。
+// 这等价于插件「测试连接」实际发的请求，能用来确认插件能否联通。
+async function onTest() {
+  if (!info.value.token) {
+    ms.warning('请先生成 Token')
+    return
+  }
+  testing.value = true
+  try {
+    const res = await post<{ version: string; versionCode: number }>({
+      // 接口地址形如 http://host:port/api/openapi/v1，去掉 /api 前缀后拼接 /version
+      url: `${info.value.apiUrl.replace(/\/api$/, '')}/version`,
+      data: {},
+      headers: { token: info.value.token },
+    })
+    if (res.code === 0)
+      ms.success(`连通正常，自报版本 v${res.data?.version} (${res.data?.versionCode})`)
+    else
+      ms.error(res.msg || '测试失败')
+  }
+  catch (err: any) {
+    ms.error(err?.msg || '测试失败')
+  }
+  finally {
+    testing.value = false
+  }
 }
 
 async function copy(text: string) {
@@ -94,6 +124,12 @@ onMounted(load)
 
       <div v-if="info.updatedAt" class="text-[12px] text-slate-400 mt-[8px]">
         最近更新：{{ info.updatedAt }}
+      </div>
+
+      <div class="mt-[12px] flex justify-end">
+        <NButton size="small" :loading="testing" @click="onTest">
+          用插件 API 测试连通
+        </NButton>
       </div>
     </NCard>
   </div>

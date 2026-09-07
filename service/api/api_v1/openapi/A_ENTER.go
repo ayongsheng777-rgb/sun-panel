@@ -8,4 +8,5 @@ type ApiOpenApi struct {
 	Item      ItemApi
 	ItemGroup ItemGroupApi
 	Manage    Manage
+	Version   VersionApi
 }

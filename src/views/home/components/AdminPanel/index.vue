@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { NButton, NEmpty, NList, NListItem, NModal, NSpin, NSwitch, NTag, useMessage } from 'naive-ui'
 import AISearchConfig from '@/views/home/components/AISearchConfig/index.vue'
 import SecuritySetting from '@/views/home/components/SecuritySetting/index.vue'
 import { AppLoader, SvgIcon } from '@/components/common'
 import { adminUserList, updateAiPermission } from '@/api/admin'
+import { proIsExpired } from '@/api/openness'
 import { useAuthStore } from '@/store'
 import { t } from '@/locales'
 
@@ -16,6 +17,19 @@ const authStore = useAuthStore()
 
 // 管理员才显示「用户管理」「权限清单」
 const isAdmin = computed(() => authStore.userInfo?.role === 1)
+
+// 授权状态（本 Fork 恒为已解锁，此处仅作 VIP 视觉展示）
+const proUnlocked = ref(false)
+
+async function loadProStatus() {
+  try {
+    const { code, data } = await proIsExpired<{ isExpired: boolean }>()
+    proUnlocked.value = code === 0 && data?.isExpired === false
+  }
+  catch {
+    proUnlocked.value = false
+  }
+}
 
 // app: 前缀 = 复用 src/components/apps 下的原管理组件
 type MenuKey =
@@ -144,8 +158,11 @@ watch(() => props.visible, (v) => {
   if (v) {
     active.value = 'app:UserInfo'
     menuOpen.value = false
+    loadProStatus()
   }
 })
+
+onMounted(loadProStatus)
 
 function close() {
   emit('update:visible', false)
@@ -159,25 +176,44 @@ function close() {
     :bordered="false" size="large" role="dialog" aria-modal="true"
     @update:show="(v: boolean) => emit('update:visible', v)"
   >
-    <div class="admin-panel-body flex flex-col md:flex-row">
-      <!-- 移动端菜单开关 -->
-      <div class="mb-2 flex items-center justify-between md:hidden">
-        <div class="text-sm font-medium">
-          {{ activeLabel }}
+    <div class="admin-panel-body flex flex-col">
+      <!-- VIP 授权状态卡（顶部整行） -->
+      <div class="mb-3 flex shrink-0 items-center gap-3 rounded-xl border border-amber-300/60 bg-gradient-to-r from-amber-50 to-yellow-50 px-4 py-3 dark:border-amber-500/30 dark:from-amber-500/10 dark:to-yellow-500/10">
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-yellow-500 text-white shadow-sm">
+          <SvgIcon icon="material-symbols:workspace-premium-rounded" :size="20" />
         </div>
-        <NButton size="tiny" quaternary @click="menuOpen = !menuOpen">
-          <template #icon>
-            <SvgIcon :icon="menuOpen ? 'material-symbols:close' : 'material-symbols:menu'" />
-          </template>
-          菜单
-        </NButton>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-semibold text-amber-700 dark:text-amber-400">PRO 已解锁</span>
+            <NTag size="tiny" type="warning" :bordered="false" round>
+              全部功能无限制
+            </NTag>
+          </div>
+          <div class="mt-0.5 text-xs text-amber-600/80 dark:text-amber-500/70">
+            站点品牌 · 自定义代码 · 搜索引擎 · 公共图库 · 备份迁移 · Docker · 开放接口
+          </div>
+        </div>
       </div>
 
-      <!-- 左侧菜单 -->
-      <div
-        class="admin-panel-menu shrink-0 md:block md:w-[168px] md:border-r md:border-zinc-200 md:pr-2 dark:md:border-zinc-700"
-        :class="menuOpen ? 'block' : 'hidden'"
-      >
+      <div class="flex min-h-0 flex-1 flex-col md:flex-row">
+        <!-- 移动端菜单开关 -->
+        <div class="mb-2 flex items-center justify-between md:hidden">
+          <div class="text-sm font-medium">
+            {{ activeLabel }}
+          </div>
+          <NButton size="tiny" quaternary @click="menuOpen = !menuOpen">
+            <template #icon>
+              <SvgIcon :icon="menuOpen ? 'material-symbols:close' : 'material-symbols:menu'" />
+            </template>
+            菜单
+          </NButton>
+        </div>
+
+        <!-- 左侧菜单 -->
+        <div
+          class="admin-panel-menu shrink-0 md:block md:w-[168px] md:border-r md:border-zinc-200 md:pr-2 dark:md:border-zinc-700"
+          :class="menuOpen ? 'block' : 'hidden'"
+        >
         <div v-for="group in menuGroups" :key="group.title" class="mb-3">
           <div class="mb-1 px-3 text-xs text-zinc-400">
             {{ group.title }}
@@ -245,6 +281,7 @@ function close() {
             <NEmpty v-else :description="permLoading ? '加载中...' : '暂无账号'" class="py-8" />
           </NSpin>
         </div>
+      </div>
       </div>
     </div>
 

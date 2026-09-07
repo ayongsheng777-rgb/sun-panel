@@ -42,3 +42,15 @@ func (a *Openness) GetAboutDescription(c *gin.Context) {
 		apiReturn.SuccessData(c, content)
 	}
 }
+
+// ProIsExpired 授权状态探测。
+//
+// 官方 Sun-Panel 用这个接口返回 PRO 是否过期（连远程授权服务器校验）。
+// 本 Fork 已彻底移除 PRO 授权限制，所有功能本地无差别全开，
+// 因此这里恒返回 isExpired=false，让仿 VIP 布局的前端显示「已解锁」。
+// 保留该路径是为了兼容官方浏览器插件 / 第三方工具对 PRO 状态的探测。
+func (a *Openness) ProIsExpired(c *gin.Context) {
+	apiReturn.SuccessData(c, gin.H{
+		"isExpired": false,
+	})
+}

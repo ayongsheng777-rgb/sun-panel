@@ -19,3 +19,10 @@ export function getAboutDescription<T>() {
     url: '/openness/getAboutDescription',
   })
 }
+
+// 授权状态探测（本 Fork 恒返回 isExpired=false = 已解锁全部功能）
+export function proIsExpired<T>() {
+  return get<T>({
+    url: '/openness/proIsExpired',
+  })
+}

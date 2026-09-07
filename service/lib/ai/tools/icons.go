@@ -16,11 +16,6 @@ import (
 	"sun-panel/models/datatype"
 )
 
-// BackfillTools 图标补齐相关工具
-func BackfillTools() []Tool {
-	return []Tool{fixIconsTool{}}
-}
-
 // ===================== 图标补齐 =====================
 
 type fixIconsTool struct{}
@@ -28,54 +23,101 @@ type fixIconsTool struct{}
 func (fixIconsTool) Name() string           { return "panel.fix_icons" }
 func (fixIconsTool) Permission() Permission { return PermissionUpdate }
 func (fixIconsTool) Description() string {
-	return "扫描全部网址，给缺图标/图标失效的网站自动抓取 favicon 并下载到本地补齐（可说：补齐图标 / 补全图标 / 图标缺失）"
+	return "扫描网址，给缺图标/图标失效的网站自动抓取 favicon 补齐；抓不到时去 Iconify 在线图标库按名称检索匹配。可说：补齐图标 / 补全图标 / 图标缺失 / 把XX分组的图标补齐"
 }
 func (fixIconsTool) ParamsSchema() map[string]string {
-	return map[string]string{}
+	return map[string]string{
+		"group": "可选，分组名或字眼（如「AI」表示所有名字带 AI 的分组）；不填=全部分组",
+	}
 }
 
 func (fixIconsTool) Execute(ec *ExecContext) (Result, error) {
+	var p struct {
+		Group string `json:"group"`
+	}
+	ec.Bind(&p)
+	groups, err := SelectGroupsByKeyword(ec.UserId, p.Group)
+	if err != nil {
+		return Result{}, err
+	}
+	if len(groups) == 0 {
+		return Result{Kind: "reply", Reply: fmt.Sprintf("没有匹配到分组「%s」，当前分组有：%s", p.Group, JoinGroupTitles(mustLoadGroups(ec.UserId)))}, nil
+	}
+	groupIds := make(map[uint]bool, len(groups))
+	names := make([]string, 0, len(groups))
+	for _, g := range groups {
+		groupIds[g.ID] = true
+		names = append(names, g.Title)
+	}
+
 	items, err := LoadItems(ec.UserId)
 	if err != nil {
 		return Result{}, err
 	}
-	total := len(items)
-	backfilled, skipped, failed := 0, 0, 0
+	total, faviconOK, iconifyOK, failed := 0, 0, 0, 0
 	var failList []string
 
 	for i := range items {
 		it := items[i]
+		if !groupIds[uint(it.ItemIconGroupId)] {
+			continue
+		}
 		if !itemNeedsIcon(it) {
-			skipped++
 			continue
 		}
-		target := iconTargetURL(it)
-		if target == "" {
-			skipped++
-			continue
-		}
-		localPath, ferr := fetchAndSaveIcon(target, ec.UserId)
-		if ferr != nil || localPath == "" {
+		total++
+		ok, how := backfillOneIcon(ec, it)
+		switch {
+		case !ok:
 			failed++
-			failList = append(failList, fmt.Sprintf("「%s」(%s)", it.Title, ferrMsg(ferr)))
-			continue
+			failList = append(failList, it.Title)
+		case strings.HasPrefix(how, "iconify"):
+			iconifyOK++
+		default:
+			faviconOK++
 		}
-		icon := datatype.ItemIconIconInfo{ItemType: 2, Src: localPath}
-		if uerr := global.Db.Model(&models.ItemIcon{}).
-			Where("id=? AND user_id=?", it.ID, ec.UserId).
-			Update("icon_json", JSONStr(icon)).Error; uerr != nil {
-			failed++
-			failList = append(failList, fmt.Sprintf("「%s」(写库失败:%s)", it.Title, uerr.Error()))
-			continue
-		}
-		backfilled++
 	}
 
-	reply := fmt.Sprintf("图标补齐完成：共 %d 个网址，已补齐 %d 个，跳过 %d 个，失败 %d 个。", total, backfilled, skipped, failed)
+	reply := fmt.Sprintf("图标补齐完成（分组：%s）：需处理 %d 个，favicon 补齐 %d 个，Iconify 图标库匹配 %d 个，仍失败 %d 个。",
+		strings.Join(names, "、"), total, faviconOK, iconifyOK, failed)
 	if len(failList) > 0 {
-		reply += "\n失败的：" + strings.Join(failList, "；")
+		reply += "\n仍未匹配到图标的：" + strings.Join(failList, "；")
 	}
-	return Result{Kind: "changed", Reply: reply, Changed: backfilled > 0}, nil
+	return Result{Kind: "changed", Reply: reply, Changed: faviconOK+iconifyOK > 0}, nil
+}
+
+// backfillOneIcon 给单个卡片补齐图标，返回是否成功与来源说明。
+//
+// 顺序：
+//  1. 抓站点 favicon 并下载到本地（与手动编辑网站一致）；
+//  2. 抓不到时，去 Iconify 在线图标库按域名/标题关键词检索，
+//     按图标名字面匹配选最像的一个，直接存图标名（前端原生支持渲染，
+//     不必下载图片）。
+func backfillOneIcon(ec *ExecContext, it models.ItemIcon) (bool, string) {
+	target := iconTargetURL(it)
+	if target != "" {
+		if localPath, ferr := fetchAndSaveIcon(target, ec.UserId); ferr == nil && localPath != "" {
+			icon := datatype.ItemIconIconInfo{ItemType: 2, Src: localPath}
+			if uerr := global.Db.Model(&models.ItemIcon{}).
+				Where("id=? AND user_id=?", it.ID, ec.UserId).
+				Update("icon_json", JSONStr(icon)).Error; uerr == nil {
+				LogOp(ec.UserId, "fix_icon", it.Title, "", localPath)
+				return true, "favicon"
+			}
+		}
+	}
+	// 兜底：Iconify 在线图标库
+	kw := IconKeywordOf(it.Title, target)
+	if full, ok := PickIconifyIcon(kw); ok {
+		icon := datatype.ItemIconIconInfo{ItemType: 3, Text: full}
+		if uerr := global.Db.Model(&models.ItemIcon{}).
+			Where("id=? AND user_id=?", it.ID, ec.UserId).
+			Update("icon_json", JSONStr(icon)).Error; uerr == nil {
+			LogOp(ec.UserId, "fix_icon_iconify", it.Title, "", full)
+			return true, "iconify:" + full
+		}
+	}
+	return false, ""
 }
 
 // itemNeedsIcon 判断该网址当前是否缺可用图标（需要补齐）

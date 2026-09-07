@@ -3,6 +3,7 @@ package ai
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -62,11 +63,12 @@ func parseIntent(raw string) (Intent, error) {
 	start := strings.Index(raw, "{")
 	end := strings.LastIndex(raw, "}")
 	if start == -1 || end == -1 || end <= start {
-		return Intent{}, errors.New("invalid ai json response")
+		return Intent{}, errors.New("大模型没有返回有效的指令 JSON（可能是空响应或闲聊式回答），请重试或换个说法")
 	}
 	var it Intent
 	if err := json.Unmarshal([]byte(raw[start:end+1]), &it); err != nil {
-		return Intent{}, err
+		// 多为输出被 max_tokens 截断（JSON 被砍半），提示里给出排查方向
+		return Intent{}, fmt.Errorf("大模型返回的指令 JSON 不完整（%w），通常是输出超长被截断，请调大 MaxTokens 或把指令拆小", err)
 	}
 	it.Tool = strings.TrimSpace(it.Tool)
 	if it.Type == "" && it.Tool == "" {

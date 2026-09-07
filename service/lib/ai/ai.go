@@ -68,7 +68,7 @@ type AIProviderConfig struct {
 	Timeout  int      `json:"timeout"` // 毫秒
 
 	Temperature  float64           `json:"temperature,omitempty"`  // 模型支持时生效，<=0 用默认 0.2
-	MaxTokens    int               `json:"maxTokens,omitempty"`    // 模型支持时生效，<=0 用默认 800
+	MaxTokens    int               `json:"maxTokens,omitempty"`    // 模型支持时生效，<=0 用默认 4096
 	ExtraHeaders map[string]string `json:"extraHeaders,omitempty"` // 额外请求头（按需）
 	Thinking     string            `json:"thinking,omitempty"`    // 思考模式：off | low | medium | high（推理模型生效）
 }
@@ -160,7 +160,8 @@ func (p OpenAICompatibleProvider) chatWithFormat(ctx context.Context, cfg AIProv
 	if cfg.Temperature > 0 {
 		temp = cfg.Temperature
 	}
-	maxTokens := 800
+	// 默认 4096：整理/批量分类类指令的 JSON 输出较长，800 易被拦腰截断导致解析失败
+	maxTokens := 4096
 	if cfg.MaxTokens > 0 {
 		maxTokens = cfg.MaxTokens
 	}
@@ -217,18 +218,27 @@ func (p OpenAICompatibleProvider) chatWithFormat(ctx context.Context, cfg AIProv
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("chat failed [%d]: %s", resp.StatusCode, string(respBody))
 	}
+	// 防线一：免费算力高峰期偶尔返回「200 但空内容」，直接解析会报莫名其妙的 JSON 错误
+	if len(bytes.TrimSpace(respBody)) == 0 {
+		return "", errors.New("服务商返回了空响应（可能是算力高峰期），请重试")
+	}
 	var parsed struct {
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
-		return "", err
+		return "", fmt.Errorf("服务商响应格式异常：%w", err)
 	}
 	if len(parsed.Choices) == 0 {
 		return "", errors.New("empty chat response")
+	}
+	// 防线二：输出被 max_tokens 截断时给明确提示（JSON 被砍半下游必解析失败）
+	if parsed.Choices[0].FinishReason == "length" {
+		return "", fmt.Errorf("大模型输出超过长度上限（%d tokens）被截断，请在 AI 设置里调大 MaxTokens 或把指令拆小", maxTokens)
 	}
 	return strings.TrimSpace(parsed.Choices[0].Message.Content), nil
 }

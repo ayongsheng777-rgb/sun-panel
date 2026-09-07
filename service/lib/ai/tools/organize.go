@@ -228,18 +228,27 @@ func (organizePlanTool) Permission() Permission { return PermissionRead }
 func (organizePlanTool) Description() string {
 	return "对面板全部网址做一次重新分类，产出整理方案（只出方案，不改数据）"
 }
-func (organizePlanTool) ParamsSchema() map[string]string { return map[string]string{} }
+func (organizePlanTool) ParamsSchema() map[string]string {
+	return map[string]string{"group": "可选，分组名或字眼（如「AI」=所有名字带 AI 的分组）；不填=全部分组"}
+}
 
 func (organizePlanTool) Execute(ec *ExecContext) (Result, error) {
-	plan, designed, warn, err := buildOrganizePlan(ec)
+	var p struct {
+		Group string `json:"group"`
+	}
+	ec.Bind(&p)
+	out, err := buildOrganizePlan(ec, p.Group)
 	if err != nil {
 		return Result{Kind: "reply", Reply: "生成整理方案失败：" + err.Error()}, nil
 	}
-	if len(plan) == 0 {
+	if out.EarlyReply != "" {
+		return Result{Kind: "reply", Reply: out.EarlyReply}, nil
+	}
+	if len(out.Plan) == 0 {
 		return Result{Kind: "reply", Reply: "当前分类已经很合理，没有需要调整的网址"}, nil
 	}
 	byCat := map[string][]string{}
-	for _, m := range plan {
+	for _, m := range out.Plan {
 		byCat[m.ToGroup] = append(byCat[m.ToGroup], m.Title)
 	}
 	cats := make([]string, 0, len(byCat))
@@ -248,15 +257,19 @@ func (organizePlanTool) Execute(ec *ExecContext) (Result, error) {
 	}
 	sort.Strings(cats)
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("整理方案：AI 重新设计了 %d 个分组，建议调整 %d 个网址的归类。", len(designed), len(plan)))
+	scopePrefix := ""
+	if out.ScopeDesc != "" {
+		scopePrefix = fmt.Sprintf("（范围：%s）", out.ScopeDesc)
+	}
+	sb.WriteString(fmt.Sprintf("整理方案%s：AI 重新设计了 %d 个分组，建议调整 %d 个网址的归类。", scopePrefix, len(out.Designed), len(out.Plan)))
 	for _, c := range cats {
 		sb.WriteString(fmt.Sprintf("\n→ %s：%s", c, strings.Join(byCat[c], "、")))
 	}
-	if warn != "" {
-		sb.WriteString("\n（" + warn + "）")
+	if out.Warn != "" {
+		sb.WriteString("\n（" + out.Warn + "）")
 	}
 	sb.WriteString("\n\n说「执行整理」我就照这个方案调整；期间不会删除任何数据。")
-	return Result{Kind: "data", Reply: sb.String(), Data: map[string]any{"plan": plan, "groups": designed}}, nil
+	return Result{Kind: "data", Reply: sb.String(), Data: map[string]any{"plan": out.Plan, "groups": out.Designed}}, nil
 }
 
 // ===================== 执行整理 =====================
@@ -269,23 +282,31 @@ func (applyOrganizeTool) Description() string {
 	return "执行整理：按分类把网址批量归到对应分组（缺的分组自动新建，不删除任何数据）"
 }
 func (applyOrganizeTool) ParamsSchema() map[string]string {
-	return map[string]string{"plan": "可选，[{\"title\":\"网址名\",\"toGroup\":\"目标分组\"}]；不给则自动重新生成方案"}
+	return map[string]string{
+		"plan":  "可选，[{\"title\":\"网址名\",\"toGroup\":\"目标分组\"}]；不给则自动重新生成方案",
+		"group": "可选，分组名或字眼（如「AI」=所有名字带 AI 的分组）；不填=全部分组",
+	}
 }
 
 func (applyOrganizeTool) Execute(ec *ExecContext) (Result, error) {
 	var p struct {
-		Plan []PlanMove `json:"plan"`
+		Plan  []PlanMove `json:"plan"`
+		Group string     `json:"group"`
 	}
 	ec.Bind(&p)
 	plan := p.Plan
 	warn := ""
+	scopeDesc := ""
 	designed := []string{}
 	if len(plan) == 0 {
-		var err error
-		plan, designed, warn, err = buildOrganizePlan(ec)
+		out, err := buildOrganizePlan(ec, p.Group)
 		if err != nil {
 			return Result{Kind: "reply", Reply: "生成整理方案失败：" + err.Error()}, nil
 		}
+		if out.EarlyReply != "" {
+			return Result{Kind: "reply", Reply: out.EarlyReply}, nil
+		}
+		plan, designed, warn, scopeDesc = out.Plan, out.Designed, out.Warn, out.ScopeDesc
 	} else {
 		// 方案由路由层传入时，AI 设计的分组名以方案里出现的为准
 		seen := map[string]bool{}
@@ -367,6 +388,9 @@ func (applyOrganizeTool) Execute(ec *ExecContext) (Result, error) {
 	if skipped > 0 {
 		msg += fmt.Sprintf("，%d 项没匹配上已跳过", skipped)
 	}
+	if scopeDesc != "" {
+		msg += fmt.Sprintf("。\n整理范围：%s（原分组若已空，请在页面上手动删除，AI 不执行删除）", scopeDesc)
+	}
 	if warn != "" {
 		msg += "\n（" + warn + "）"
 	}
@@ -444,31 +468,71 @@ func designGroups(ec *ExecContext, items []models.ItemIcon, groups []models.Item
 	return out, nil
 }
 
+// organizePlanOutcome 整理方案的产出
+type organizePlanOutcome struct {
+	Plan       []PlanMove // 需要移动的条目
+	Designed   []string   // AI 设计的分组清单
+	Warn       string     // 告警（如部分批次失败）
+	ScopeDesc  string     // 非空表示限定了范围（命中的分组名，顿号连接）
+	EarlyReply string     // 非空表示直接回复用户并终止（无匹配分组 / 范围内无网址）
+}
+
 // buildOrganizePlan 两阶段：先让 AI 从零设计分组，再分批把网址归入这些分组。
-// 返回 需要移动的条目、AI 设计的分组清单、告警、错误。单批失败只跳过该批（部分失败隔离）。
-func buildOrganizePlan(ec *ExecContext) ([]PlanMove, []string, string, error) {
+// scopeKeyword 非空时只整理名字匹配的分组（复用 SelectGroupsByKeyword：精确优先、包含匹配）。
+// 单批失败只跳过该批（部分失败隔离）。
+func buildOrganizePlan(ec *ExecContext, scopeKeyword string) (organizePlanOutcome, error) {
 	items, err := LoadItems(ec.UserId)
 	if err != nil {
-		return nil, nil, "", err
-	}
-	if len(items) == 0 {
-		return nil, nil, "", nil
+		return organizePlanOutcome{}, err
 	}
 	groups, err := LoadGroups(ec.UserId)
 	if err != nil {
-		return nil, nil, "", err
+		return organizePlanOutcome{}, err
 	}
+
+	// 范围过滤：只保留命中分组里的网址
+	scopeDesc := ""
+	if kw := strings.TrimSpace(scopeKeyword); kw != "" {
+		matched, merr := SelectGroupsByKeyword(ec.UserId, kw)
+		if merr != nil {
+			return organizePlanOutcome{}, merr
+		}
+		if len(matched) == 0 {
+			return organizePlanOutcome{EarlyReply: fmt.Sprintf("没有匹配到分组「%s」，当前分组有：%s", kw, JoinGroupTitles(groups))}, nil
+		}
+		inScope := map[int]bool{}
+		names := make([]string, 0, len(matched))
+		for _, g := range matched {
+			inScope[int(g.ID)] = true
+			names = append(names, g.Title)
+		}
+		scoped := make([]models.ItemIcon, 0, len(items))
+		for _, it := range items {
+			if inScope[it.ItemIconGroupId] {
+				scoped = append(scoped, it)
+			}
+		}
+		items = scoped
+		scopeDesc = strings.Join(names, "、")
+		if len(items) == 0 {
+			return organizePlanOutcome{EarlyReply: fmt.Sprintf("分组「%s」里没有网址，无需整理", scopeDesc)}, nil
+		}
+	}
+	if len(items) == 0 {
+		return organizePlanOutcome{}, nil
+	}
+
 	groupName := map[int]string{}
 	for _, g := range groups {
 		groupName[int(g.ID)] = g.Title
 	}
 	if ec.LLM == nil {
-		return nil, nil, "", fmt.Errorf("AI 未配置，无法生成分类方案")
+		return organizePlanOutcome{}, fmt.Errorf("AI 未配置，无法生成分类方案")
 	}
 
 	allowed, err := designGroups(ec, items, groups)
 	if err != nil {
-		return nil, nil, "", err
+		return organizePlanOutcome{}, err
 	}
 	allowedSet := map[string]bool{}
 	for _, c := range allowed {
@@ -548,5 +612,5 @@ func buildOrganizePlan(ec *ExecContext) ([]PlanMove, []string, string, error) {
 	if failedBatches > 0 {
 		warn = fmt.Sprintf("有 %d 批网址分类时模型返回异常，已跳过", failedBatches)
 	}
-	return plan, allowed, warn, nil
+	return organizePlanOutcome{Plan: plan, Designed: allowed, Warn: warn, ScopeDesc: scopeDesc}, nil
 }

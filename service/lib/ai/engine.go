@@ -275,6 +275,11 @@ func (e *Engine) route(ctx context.Context, userId uint, prompt string) (Intent,
 9. 检查失效/打不开/死链网址 → panel.check_dead_links。
 10. 重新归纳/重新分类/整理所有网址、分组由你决定 → panel.apply_organize（直接执行）；
     用户想先看方案再定 → panel.organize_plan。
+    注意：这两个整理工具的 params 里禁止输出 plan 方案数组
+    （方案由工具内部自动分批生成；你输出长数组会被长度上限截断导致整个请求失败）。
+    范围限定：用户说「整理某分组 / 带XX字眼的分组 / XX相关的分组」时，
+    params 只填 {"group":"分组名或字眼"}（如「整理带AI字眼的分组」→ {"group":"AI"}，
+    会匹配所有名字含 AI 的分组）；没提范围就留空 {}，表示整理全部分组。
 11. 用户说「补齐图标 / 补全图标 / 图标缺失 / 给没图标的补图标」→ panel.fix_icons：
     抓站点 favicon，抓不到时自动去在线图标库按名称检索匹配。
 12. 用户说「补全网址 / 网址信息补全 / 把内容补齐 / 缺网址的补上」→ panel.backfill_urls：

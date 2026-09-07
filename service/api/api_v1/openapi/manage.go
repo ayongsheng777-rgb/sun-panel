@@ -16,6 +16,10 @@ import (
 type Manage struct{}
 
 // buildApiUrl 拼出插件要填的接口地址，前端展示用。
+//
+// 浏览器插件（Sun-Panel BE）要求 host 字段包含 /openapi/v1 路径
+// （参考插件 i18n 文案 guideOpenAPI：「如果地址仅包含域名，还需加路径（路径示例：/openapi/v1）」）。
+// 因此这里**不带 /api 前缀**，只保留 /openapi/v1，复制到插件里就能直接用。
 func buildApiUrl(c *gin.Context) string {
 	scheme := "http"
 	host := c.Request.Host
@@ -25,7 +29,7 @@ func buildApiUrl(c *gin.Context) string {
 	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
 		scheme = "https"
 	}
-	return scheme + "://" + host + "/api/openapi/v1"
+	return scheme + "://" + host + "/openapi/v1"
 }
 
 // GetInfo 查看当前开放接口状态。

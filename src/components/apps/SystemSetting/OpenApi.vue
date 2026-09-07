@@ -61,9 +61,9 @@ async function onTest() {
   }
   testing.value = true
   try {
+    // apiUrl 形如 http://host:port/openapi/v1，直接拼 /version
     const res = await post<{ version: string; versionCode: number }>({
-      // 接口地址形如 http://host:port/api/openapi/v1，去掉 /api 前缀后拼接 /version
-      url: `${info.value.apiUrl.replace(/\/api$/, '')}/version`,
+      url: `${info.value.apiUrl.replace(/\/$/, '')}/version`,
       data: {},
       headers: { token: info.value.token },
     })
@@ -99,7 +99,7 @@ onMounted(load)
   <div class="pt-[10px]">
     <NAlert type="info" :bordered="false" class="mb-[10px]">
       开启后，官方浏览器插件（Sun-Panel BE）就能把当前浏览的网页一键存到面板里。
-      把下面的「接口地址」和「Token」填进插件设置即可。
+      复制的「接口地址」已经按插件要求带 <code>/openapi/v1</code> 路径，填进插件设置即可。
     </NAlert>
 
     <NCard size="small" style="border-radius:10px">

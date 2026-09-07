@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"net/url"
 	"strings"
 
 	"sun-panel/api/api_v1/common/apiReturn"
@@ -32,6 +33,28 @@ func buildApiUrl(c *gin.Context) string {
 	return scheme + "://" + host + "/openapi/v1"
 }
 
+// normalizeApiUrl 纠正历史遗留的错误地址。
+//
+// 早期版本把 /api 前缀也写进了存储值（形如 http://host/api/openapi/v1），
+// 而插件要求的是根路径 /openapi/v1。存储值一旦落库就不会自动更新，
+// 用户没点「刷新令牌」就一直拿到错地址。这里保留用户自定义的域名，
+// 只把路径部分规范化成 /openapi/v1。
+func normalizeApiUrl(raw string, fallback string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fallback
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme == "" {
+		scheme = "http"
+	}
+	return scheme + "://" + u.Host + "/openapi/v1"
+}
+
 // GetInfo 查看当前开放接口状态。
 func (a Manage) GetInfo(c *gin.Context) {
 	cfg, err := biz.GetOpenApiConfig()
@@ -45,10 +68,7 @@ func (a Manage) GetInfo(c *gin.Context) {
 		userId = currentUser.ID
 	}
 
-	apiUrl := cfg.ApiUrl
-	if apiUrl == "" {
-		apiUrl = buildApiUrl(c)
-	}
+	apiUrl := normalizeApiUrl(cfg.ApiUrl, buildApiUrl(c))
 
 	apiReturn.SuccessData(c, gin.H{
 		"enabled":   cfg.Enabled,
@@ -72,7 +92,7 @@ func (a Manage) RefreshToken(c *gin.Context) {
 	apiReturn.SuccessData(c, gin.H{
 		"enabled":   cfg.Enabled,
 		"token":     cfg.Token,
-		"apiUrl":    cfg.ApiUrl,
+		"apiUrl":    normalizeApiUrl(cfg.ApiUrl, buildApiUrl(c)),
 		"updatedAt": cfg.UpdatedAt,
 	})
 }
@@ -97,6 +117,6 @@ func (a Manage) SetEnable(c *gin.Context) {
 	apiReturn.SuccessData(c, gin.H{
 		"enabled": cfg.Enabled,
 		"token":   cfg.Token,
-		"apiUrl":  cfg.ApiUrl,
+		"apiUrl":  normalizeApiUrl(cfg.ApiUrl, buildApiUrl(c)),
 	})
 }

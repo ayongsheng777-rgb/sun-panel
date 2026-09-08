@@ -146,15 +146,33 @@ function handleClearSearchTerm() {
   emits('itemSearch', searchTerm.value)
 }
 
+// 内置引擎的图标地址是构建时的哈希文件名（如 /assets/bing-<hash>.svg），
+// 每次重新构建哈希会变；历史存档还可能存着官方旧版的静态路径（/static/images/builtin/...）。
+// 两者在新版本里都会 404 导致图标裂开。这里按 key 把内置引擎的 iconSrc 与 url
+// 重映射回当前构建的默认值，自定义引擎（key 不匹配）则原样保留。
+function healSearchEngineList(list: DeskModule.SearchBox.SearchEngine[]): DeskModule.SearchBox.SearchEngine[] {
+  const freshByKey = new Map(defaultSearchEngineList.value.map(e => [e.key, e]))
+  return list.map((engine) => {
+    const fresh = engine.key ? freshByKey.get(engine.key) : undefined
+    return fresh ? { ...engine, iconSrc: fresh.iconSrc, url: fresh.url } : engine
+  })
+}
+
 onMounted(() => {
   moduleConfig.getValueByNameFromCloud<State>('deskModuleSearchBox').then(({ code, data }) => {
     if (code === 0 && data) {
-      // 老数据里可能没有引擎列表（历史版本只存了当前引擎），补默认值
+      // 老数据里可能没有引擎列表（历史版本只存了当前引擎），补默认值；
+      // 并且内置引擎的 iconSrc 是旧构建哈希，需自愈重映射，避免图标 404。
+      const list = data.searchEngineList?.length
+        ? healSearchEngineList(data.searchEngineList)
+        : defaultSearchEngineList.value
+      const current = list.find(e => e.key === data.currentSearchEngine?.key)
+        ?? list[0]
+        ?? defaultSearchEngineList.value[0]
       state.value = {
         ...data,
-        searchEngineList: data.searchEngineList?.length
-          ? data.searchEngineList
-          : defaultSearchEngineList.value,
+        currentSearchEngine: current,
+        searchEngineList: list,
       }
     }
     else {

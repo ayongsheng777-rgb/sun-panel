@@ -31,7 +31,7 @@ func (a ItemGroupApi) GetList(c *gin.Context) {
 	data := make([]gin.H, 0, len(list))
 	for _, v := range list {
 		data = append(data, gin.H{
-			"id":       v.ID,
+			"itemGroupID": v.ID,
 			"title":    v.Title,
 			"onlyName": v.OnlyName,
 		})
@@ -63,7 +63,7 @@ func (a ItemGroupApi) Create(c *gin.Context) {
 	if onlyName != "" {
 		exist := models.ItemIconGroup{}
 		if err := global.Db.First(&exist, "only_name = ? AND user_id = ?", onlyName, userId).Error; err == nil {
-			apiReturn.SuccessData(c, gin.H{"id": exist.ID, "onlyName": exist.OnlyName})
+			apiReturn.SuccessData(c, gin.H{"itemGroupID": exist.ID, "onlyName": exist.OnlyName})
 			return
 		}
 	} else {
@@ -79,5 +79,5 @@ func (a ItemGroupApi) Create(c *gin.Context) {
 		apiReturn.ErrorDatabase(c, err.Error())
 		return
 	}
-	apiReturn.SuccessData(c, gin.H{"id": group.ID, "onlyName": group.OnlyName})
+	apiReturn.SuccessData(c, gin.H{"itemGroupID": group.ID, "onlyName": group.OnlyName})
 }

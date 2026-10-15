@@ -9,10 +9,11 @@ import PublicGallery from './PublicGallery.vue'
 import BackupMigration from './BackupMigration.vue'
 import DockerManage from './DockerManage.vue'
 import OpenApi from './OpenApi.vue'
+import Mcp from './Mcp.vue'
 
 // 原本散落在管理面板里的多个设置入口，统一收进这一个页面。
 // 采用卡片式分区布局（仿 VIP 后台），每块功能带 PRO 角标，全部无限制开放。
-type SectionKey = 'brand' | 'code' | 'engine' | 'gallery' | 'backup' | 'docker' | 'openapi'
+type SectionKey = 'brand' | 'code' | 'engine' | 'gallery' | 'backup' | 'docker' | 'openapi' | 'mcp'
 
 interface Section {
   key: SectionKey
@@ -29,6 +30,7 @@ const sections: Section[] = [
   { key: 'backup', label: '备份迁移', desc: '数据打包备份与一键恢复', icon: 'material-symbols:backup-outline-rounded' },
   { key: 'docker', label: 'Docker 管理', desc: '容器列表、状态与启停', icon: 'material-symbols:deployed-code-outline-rounded' },
   { key: 'openapi', label: '开放接口', desc: '浏览器插件接入，保留 token 校验', icon: 'material-symbols:api-rounded' },
+  { key: 'mcp', label: 'MCP 服务', desc: 'AI 助手通过 MCP 协议访问书签', icon: 'material-symbols:hub-outline-rounded' },
 ]
 
 const active = ref<SectionKey>('brand')
@@ -77,6 +79,7 @@ function open(key: SectionKey) {
         <BackupMigration v-else-if="active === 'backup'" />
         <DockerManage v-else-if="active === 'docker'" />
         <OpenApi v-else-if="active === 'openapi'" />
+        <Mcp v-else-if="active === 'mcp'" />
       </NCard>
     </div>
   </div>

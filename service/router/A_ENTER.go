@@ -7,6 +7,7 @@ import (
 	"sun-panel/biz"
 	"sun-panel/global"
 	"sun-panel/router/docker"
+	"sun-panel/router/mcp"
 	"sun-panel/router/openapi"
 	"sun-panel/router/openness"
 	"sun-panel/router/panel"
@@ -32,6 +33,10 @@ func InitRouters(addr string) error {
 
 	// 开放接口：挂在根路径，地址形如 http://域名:端口/openapi/v1
 	openapi.Init(rootRouter)
+
+	// MCP 服务：挂在根路径，地址形如 http://域名:端口/mcp
+	// 供 AI 助手（Claude、Cursor 等）通过 MCP 协议访问书签
+	mcp.Init(rootRouter)
 
 	// 自定义 CSS / JS：改到 conf/custom 下，重新发版前端不会被清掉
 	customDir := biz.CustomDir

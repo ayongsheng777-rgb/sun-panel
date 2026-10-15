@@ -23,7 +23,7 @@ import (
 // 不放行 Cookie；接口自身靠 token 请求头鉴权，跨域放行不会泄露登录态。
 func CorsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !strings.HasPrefix(c.Request.URL.Path, "/openapi/") {
+		if !strings.HasPrefix(c.Request.URL.Path, "/openapi/") && !strings.HasPrefix(c.Request.URL.Path, "/mcp") {
 			c.Next()
 			return
 		}

@@ -129,9 +129,73 @@ var availableTools = []mcpTool{
 			"required": []string{"id"},
 		},
 	},
+	{
+		Name:        "create_bookmark",
+		Description: "Create a new bookmark. Requires title and url. Optionally specify category_id, description, lan_url.",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"title": map[string]interface{}{
+					"type":        "string",
+					"description": "Bookmark title (required)",
+				},
+				"url": map[string]interface{}{
+					"type":        "string",
+					"description": "Bookmark URL (required)",
+				},
+				"category_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Category/group ID (optional, defaults to first category). Use list_categories to find IDs.",
+				},
+				"description": map[string]interface{}{
+					"type":        "string",
+					"description": "Description (optional)",
+				},
+				"lan_url": map[string]interface{}{
+					"type":        "string",
+					"description": "LAN URL (optional)",
+				},
+			},
+			"required": []string{"title", "url"},
+		},
+	},
+	{
+		Name:        "update_bookmark",
+		Description: "Update an existing bookmark by ID. Only provided fields are changed; omitted fields stay as-is.",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Bookmark ID (required)",
+				},
+				"title": map[string]interface{}{
+					"type":        "string",
+					"description": "New title (optional)",
+				},
+				"url": map[string]interface{}{
+					"type":        "string",
+					"description": "New URL (optional)",
+				},
+				"category_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "New category/group ID (optional)",
+				},
+				"description": map[string]interface{}{
+					"type":        "string",
+					"description": "New description (optional)",
+				},
+				"lan_url": map[string]interface{}{
+					"type":        "string",
+					"description": "New LAN URL (optional)",
+				},
+			},
+			"required": []string{"id"},
+		},
+	},
 }
 
-// Handle is the single JSON-RPC endpoint for MCP (POST /mcp)
+// Handle is the single JSON-RPC endpoint// Handle is the single JSON-RPC endpoint for MCP (POST /mcp)
 func Handle(c *gin.Context) {
 	// Auth: check token (same as OpenAPI)
 	if !checkAuth(c) {
@@ -239,10 +303,160 @@ func callTool(c *gin.Context, name string, args map[string]interface{}) (string,
 	case "get_bookmark":
 		id := getIntArg(args, "id", 0)
 		return getBookmark(userID, id)
+	case "create_bookmark":
+		return createBookmark(userID, args)
+	case "update_bookmark":
+		id := getIntArg(args, "id", 0)
+		return updateBookmark(userID, id, args)
 	default:
 		return "unknown tool: " + name, true
 	}
 }
+
+func getStringArg(args map[string]interface{}, key string) string {
+	if v, ok := args[key].(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+// createBookmark creates a new bookmark item
+func createBookmark(userID uint, args map[string]interface{}) (string, bool) {
+	title := getStringArg(args, "title")
+	url := getStringArg(args, "url")
+	if title == "" {
+		return "title is required", true
+	}
+	if url == "" {
+		return "url is required", true
+	}
+	description := getStringArg(args, "description")
+	lanURL := getStringArg(args, "lan_url")
+	categoryID := getIntArg(args, "category_id", 0)
+
+	// Resolve category: use given ID, or default to first category
+	if categoryID == 0 {
+		var firstGroup models.ItemIconGroup
+		if err := global.Db.Where("user_id = ?", userID).Order("sort ASC").First(&firstGroup).Error; err != nil {
+			return "no categories exist, please create one first", true
+		}
+		categoryID = int(firstGroup.ID)
+	} else {
+		// Verify category exists and belongs to user
+		var group models.ItemIconGroup
+		if err := global.Db.Where("id = ? AND user_id = ?", categoryID, userID).First(&group).Error; err != nil {
+			return "category not found", true
+		}
+	}
+
+	onlyName := "item-" + buildRandCode(10)
+
+	item := models.ItemIcon{
+		Title:           title,
+		Url:             url,
+		LanUrl:          lanURL,
+		Description:     description,
+		OpenMethod:      2,
+		ItemIconGroupId: categoryID,
+		UserId:          userID,
+		OnlyName:        onlyName,
+	}
+	// Build addresses JSON
+	addresses := buildItemAddresses(url, lanURL)
+	if addrJson, err := json.Marshal(addresses); err == nil {
+		item.AddressesJson = string(addrJson)
+	}
+
+	if err := global.Db.Create(&item).Error; err != nil {
+		return "database error: " + err.Error(), true
+	}
+	return "bookmark created with ID " + itoa(int(item.ID)), false
+}
+
+// updateBookmark updates an existing bookmark; only provided fields change
+func updateBookmark(userID uint, id int, args map[string]interface{}) (string, bool) {
+	if id == 0 {
+		return "id is required", true
+	}
+	var item models.ItemIcon
+	if err := global.Db.Where("id = ? AND user_id = ?", id, userID).First(&item).Error; err != nil {
+		return "bookmark not found", true
+	}
+
+	changed := false
+	if title := getStringArg(args, "title"); title != "" {
+		item.Title = title
+		changed = true
+	}
+	if url := getStringArg(args, "url"); url != "" {
+		item.Url = url
+		changed = true
+	}
+	if desc, ok := args["description"].(string); ok {
+		item.Description = strings.TrimSpace(desc)
+		changed = true
+	}
+	if lanURL, ok := args["lan_url"].(string); ok {
+		item.LanUrl = strings.TrimSpace(lanURL)
+		changed = true
+	}
+	if catID := getIntArg(args, "category_id", 0); catID > 0 {
+		var group models.ItemIconGroup
+		if err := global.Db.Where("id = ? AND user_id = ?", catID, userID).First(&group).Error; err != nil {
+			return "category not found", true
+		}
+		item.ItemIconGroupId = catID
+		changed = true
+	}
+
+	if !changed {
+		return "no fields to update", true
+	}
+
+	// Rebuild addresses if url or lan_url changed
+	if _, ok := args["url"]; ok {
+		addresses := buildItemAddresses(item.Url, item.LanUrl)
+		if addrJson, err := json.Marshal(addresses); err == nil {
+			item.AddressesJson = string(addrJson)
+		}
+	}
+
+	updateFields := []string{"Title", "Url", "LanUrl", "Description", "ItemIconGroupId", "AddressesJson"}
+	if err := global.Db.Model(&models.ItemIcon{}).Where("id = ?", item.ID).Select(updateFields).Updates(&item).Error; err != nil {
+		return "database error: " + err.Error(), true
+	}
+	return "bookmark " + itoa(id) + " updated", false
+}
+
+// buildRandCode generates a random alphanumeric code
+func buildRandCode(length int) string {
+	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = chars[fastrand()%uint64(len(chars))]
+	}
+	return string(b)
+}
+
+var randSeed uint64 = 123456789
+
+func fastrand() uint64 {
+	randSeed = randSeed*6364136223846793005 + 1442695040888963407
+	return randSeed >> 33
+}
+
+// buildItemAddresses builds the addresses array for a bookmark
+func buildItemAddresses(url, lanURL string) []map[string]interface{} {
+	var addresses []map[string]interface{}
+	if url != "" {
+		addresses = append(addresses, map[string]interface{}{"name": "default", "url": url, "openMethod": 2})
+	}
+	if lanURL != "" {
+		addresses = append(addresses, map[string]interface{}{"name": "lan", "url": lanURL, "openMethod": 2})
+	}
+	return addresses
+}
+
 
 func getIntArg(args map[string]interface{}, key string, def int) int {
 	if v, ok := args[key]; ok {
